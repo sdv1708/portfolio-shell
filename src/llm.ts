@@ -1,113 +1,59 @@
-// On-device LLM: capability detection, Gemini Nano (Chrome Prompt API)
-// integration, WebLLM (WebGPU) fallback, and token streaming.
+// On-device / edge LLM layer with a graceful cascade:
 //
-// Detection priority:
-//   1. Chrome Prompt API  -> window.LanguageModel
-//   2. WebLLM (WebGPU)    -> navigator.gpu, lazy-loaded from CDN
-//   3. Unsupported
+//   1. Gemini Nano   — Chrome Prompt API, on-device, zero download (auto)
+//   2. Workers AI     — Cloudflare edge inference, instant, no download (auto)
+//   3. Canned Q&A     — offline string matching, last resort (auto)
+//   4. WebLLM         — fully-local in-browser model, ~0.9GB (opt-in only)
+//
+// detect() picks the best automatic backend. WebLLM is never automatic — it
+// is enabled explicitly via enableWebLLM() so a visitor never waits on a
+// multi-hundred-MB download they didn't ask for.
 
-export type BackendKind = "gemini-nano" | "webllm" | "none";
+import { SYSTEM_PROMPT } from "./system-prompt.ts";
+import { answerFromFaq } from "./faq.ts";
+
+export type BackendKind = "gemini-nano" | "workers-ai" | "webllm" | "canned";
 
 export interface BackendInfo {
   kind: BackendKind;
-  // Short status label used during boot / ask intro.
-  label: string;
-  // Detailed label used by the /model command.
-  modelLabel: string;
+  label: string; // status line shown during boot / ask intro
+  modelLabel: string; // shown by /model
+  titleTag: string; // short tag for the title bar
 }
 
-export const SYSTEM_PROMPT = `You are an AI assistant embedded in DV's portfolio terminal at sdv.dev.
-
-Answer questions about DV (Sanjay Dari Veerabasappa) concisely in plain text only — no markdown, no bullet symbols, no headers.
-
-Keep all responses under 120 words.
-
-Terminal-friendly output only.
-
-CONTACT:
-sanjaydv@umd.edu
-linkedin.com/in/sanjaydv
-github.com/sdv1708
-
-EXPERIENCE:
-
-Connyct CampusAI, AI Engineer Intern (Sep-Dec 2025)
-RAG pipeline (Elasticsearch, SentenceTransformers, Redis), multisignal ranking, ≤2s on AWS ECS.
-LLM eval framework (DeepEval, Confident AI) in CI/CD.
-
-UMD Community Preservation Trust, SDE (Feb-Dec 2025)
-React/Flask/MySQL application replacing paper workflows for 15K+ users.
-
-IQVIA, SDE AI & Backend (Jul 2022 - Jul 2024)
-GPT-3.5 NLP platform (Azure Functions) 95% extraction accuracy.
-Airflow invoice pipeline with 70% throughput improvement.
-Microservices using Docker, Kubernetes, Azure Service Bus handling 3K+ msgs/sec.
-FastAPI/PostgreSQL APIs supporting 1.2M+ annual transactions.
-
-PROJECTS:
-
-PostMortem AI
-Python, TypeScript, PostgreSQL, Playwright.
-Six-stage pipeline.
-Immutable citation validation.
-LLM-as-judge rubric scoring.
-Experiment versioning.
-
-Clinical Decision Support System
-Google ADK, Gemini, MCP, RAG, Cloud Run.
-3-agent coordinator.
-MCP tool handlers.
-RAI guardrails.
-Eval-gated CI/CD.
-
-Executive Intelligence Copilot
-LangChain, FAISS, SQLite.
-Multi-agent workflows.
-Tool calling.
-Function-level routing.
-
-SKILLS:
-
-Python
-Java
-SQL
-PostgreSQL
-MySQL
-Redis
-Elasticsearch
-FastAPI
-Flask
-Kafka
-Airflow
-LLMs
-RAG
-LangChain
-LangGraph
-PyTorch
-Scikit-learn
-Hugging Face
-DeepEval
-AWS
-Azure
-Docker
-Kubernetes
-CI/CD
-Claude Code
-Cursor
-
-EDUCATION:
-
-MS Information Systems, UMD Robert H. Smith School of Business (Dec 2025)
-
-BS Electronics Engineering, PES University (May 2022)`;
-
-const WEBLLM_MODEL = "Phi-3.5-mini-instruct-q4f16_1-MLC";
+const WEBLLM_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC"; // ~0.9GB
 const WEBLLM_CDN = "https://esm.run/@mlc-ai/web-llm";
 
 export type ProgressCallback = (text: string) => void;
 
-// Minimal structural typing for the experimental Chrome Prompt API so we
-// don't depend on ambient lib types that may not exist.
+const BACKENDS: Record<BackendKind, BackendInfo> = {
+  "gemini-nano": {
+    kind: "gemini-nano",
+    label: "ready. backend: Gemini Nano (Chrome Prompt API, on-device)",
+    modelLabel: "Gemini Nano (Chrome Prompt API)",
+    titleTag: "gemini nano",
+  },
+  "workers-ai": {
+    kind: "workers-ai",
+    label: "ready. backend: Cloudflare Workers AI (Llama 3.1, edge)",
+    modelLabel: "Cloudflare Workers AI (Llama-3.1-8B-Instruct)",
+    titleTag: "workers ai",
+  },
+  webllm: {
+    kind: "webllm",
+    label: "ready. backend: WebLLM (Llama-3.2-1B, on-device)",
+    modelLabel: "WebLLM (Llama-3.2-1B-Instruct)",
+    titleTag: "webllm · local",
+  },
+  canned: {
+    kind: "canned",
+    label: "offline Q&A mode (no model). try desktop Chrome for live AI.",
+    modelLabel: "offline Q&A (no model)",
+    titleTag: "offline",
+  },
+};
+
+// Minimal structural typing for the experimental Chrome Prompt API.
 interface PromptSession {
   promptStreaming(input: string): AsyncIterable<string> | ReadableStream<string>;
 }
@@ -121,11 +67,7 @@ function getLanguageModel(): LanguageModelStatic | undefined {
 }
 
 export class LLM {
-  private backend: BackendInfo = {
-    kind: "none",
-    label: "on-device AI unavailable. try Chrome.",
-    modelLabel: "none",
-  };
+  private backend: BackendInfo = BACKENDS.canned;
   private geminiSession: PromptSession | null = null;
   private webllmEngine: any = null;
   private initialized = false;
@@ -134,121 +76,237 @@ export class LLM {
     return this.backend;
   }
 
-  // Fast, non-destructive capability probe used during boot. Does not
-  // download or instantiate any model.
+  // True when an in-browser WebLLM download is even possible (WebGPU present)
+  // and we aren't already using a live model — i.e. when offering /local makes
+  // sense.
+  canOfferWebLLM(): boolean {
+    const hasGpu = "gpu" in navigator && !!(navigator as Navigator & { gpu?: unknown }).gpu;
+    return hasGpu && this.backend.kind !== "webllm" && this.backend.kind !== "gemini-nano";
+  }
+
+  // Pick the best AUTOMATIC backend (never WebLLM).
   async detect(): Promise<BackendInfo> {
+    // 1. Chrome Prompt API (Gemini Nano)
     const lm = getLanguageModel();
     if (lm) {
       try {
-        // Newer Prompt API exposes availability(); treat presence as enough.
         const status = lm.availability ? await lm.availability() : "available";
         if (status !== "unavailable") {
-          this.backend = {
-            kind: "gemini-nano",
-            label: "ready. backend: Gemini Nano (Chrome Prompt API, on-device)",
-            modelLabel: "Gemini Nano (Chrome Prompt API)",
-          };
+          this.backend = BACKENDS["gemini-nano"];
           return this.backend;
         }
       } catch {
-        // fall through to other backends
+        /* fall through */
       }
     }
 
-    if ("gpu" in navigator && (navigator as Navigator & { gpu?: unknown }).gpu) {
-      this.backend = {
-        kind: "webllm",
-        label: "ready. backend: WebLLM (WebGPU)",
-        modelLabel: "WebLLM (Phi-3.5-mini-instruct)",
-      };
+    // 2. Cloudflare Workers AI (only if our edge endpoint answers)
+    if (await this.probeWorkersAI()) {
+      this.backend = BACKENDS["workers-ai"];
       return this.backend;
     }
 
-    this.backend = {
-      kind: "none",
-      label: "on-device AI unavailable. try Chrome.",
-      modelLabel: "none",
-    };
+    // 3. Offline canned Q&A
+    this.backend = BACKENDS.canned;
     return this.backend;
   }
 
-  // Lazily instantiate the active backend. `onProgress` reports model
-  // download / warm-up status (mostly meaningful for WebLLM).
-  async init(onProgress?: ProgressCallback): Promise<void> {
-    if (this.initialized) return;
+  private async probeWorkersAI(): Promise<boolean> {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 2000);
+      const res = await fetch("/api/health", { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) return false;
+      const data = (await res.json()) as { ai?: boolean };
+      return data.ai === true;
+    } catch {
+      return false;
+    }
+  }
 
+  // Lazily prepare the active automatic backend. Only Gemini Nano needs setup;
+  // Workers AI and canned are stateless.
+  async init(): Promise<void> {
+    if (this.initialized) return;
     if (this.backend.kind === "gemini-nano") {
       const lm = getLanguageModel();
       if (!lm) throw new Error("Prompt API unavailable");
       this.geminiSession = await lm.create({
         initialPrompts: [{ role: "system", content: SYSTEM_PROMPT }],
       });
-      this.initialized = true;
-      return;
     }
-
-    if (this.backend.kind === "webllm") {
-      const webllm: any = await import(/* @vite-ignore */ WEBLLM_CDN);
-      this.webllmEngine = await webllm.CreateMLCEngine(WEBLLM_MODEL, {
-        initProgressCallback: (report: { progress: number; text: string }) => {
-          if (onProgress) {
-            const pct = Math.round((report.progress ?? 0) * 100);
-            onProgress(`download progress: ${pct}%`);
-          }
-        },
-      });
-      this.initialized = true;
-      return;
-    }
-
-    throw new Error("on-device AI isn't supported in this browser. try desktop Chrome.");
+    this.initialized = true;
   }
 
-  // Stream a response to `userText`, yielding incremental text deltas.
-  async *stream(userText: string): AsyncGenerator<string> {
-    if (this.backend.kind === "gemini-nano") {
-      if (!this.geminiSession) throw new Error("session not initialized");
-      const out = this.geminiSession.promptStreaming(userText);
-      let prev = "";
-      for await (const chunk of asyncIterable(out)) {
-        // The Prompt API has shipped both cumulative and delta streams across
-        // versions; normalize to deltas.
-        if (chunk.startsWith(prev) && prev.length > 0) {
-          yield chunk.slice(prev.length);
-          prev = chunk;
-        } else if (chunk.length >= prev.length && prev.length > 0 && chunk.includes(prev)) {
-          yield chunk.slice(prev.length);
-          prev = chunk;
-        } else {
-          yield chunk;
-          prev = prev + chunk;
+  // Opt-in: download + run a fully-local model in the browser. Hardened
+  // against the common WebLLM Cache.add() failures (eviction / interrupted
+  // shard) via persistent storage, a quota pre-check, and resume-on-retry.
+  async enableWebLLM(onProgress?: ProgressCallback): Promise<void> {
+    if (!("gpu" in navigator) || !(navigator as Navigator & { gpu?: unknown }).gpu) {
+      throw new Error("WebGPU unavailable. local models need desktop Chrome/Edge.");
+    }
+
+    // Reduce mid-download eviction.
+    try {
+      await navigator.storage?.persist?.();
+    } catch {
+      /* best effort */
+    }
+
+    // Pre-flight storage so we fail early with a clear message.
+    try {
+      const est = await navigator.storage?.estimate?.();
+      if (est && est.quota && est.usage != null) {
+        const free = est.quota - est.usage;
+        if (free < 1.2e9) {
+          throw new Error(
+            `need ~1GB free disk, only ${(free / 1e9).toFixed(1)}GB available. free up space and retry.`,
+          );
         }
       }
-      return;
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("free disk")) throw e;
+      /* estimate unsupported — proceed */
     }
 
-    if (this.backend.kind === "webllm") {
-      if (!this.webllmEngine) throw new Error("engine not initialized");
-      const completion = await this.webllmEngine.chat.completions.create({
-        stream: true,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userText },
-        ],
-      });
-      for await (const chunk of completion) {
-        const delta = chunk?.choices?.[0]?.delta?.content ?? "";
-        if (delta) yield delta;
+    const webllm: any = await import(/* @vite-ignore */ WEBLLM_CDN);
+    // IndexedDB cache sidesteps some Cache Storage quota/secure-context quirks.
+    const appConfig = { ...webllm.prebuiltAppConfig, useIndexedDBCache: true };
+    const initProgressCallback = (report: { progress: number; text: string }) => {
+      if (onProgress) {
+        const pct = Math.round((report.progress ?? 0) * 100);
+        onProgress(`download progress: ${pct}%`);
       }
+    };
+
+    // Completed shards persist in cache, so each retry resumes forward.
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        this.webllmEngine = await webllm.CreateMLCEngine(WEBLLM_MODEL, {
+          appConfig,
+          initProgressCallback,
+        });
+        this.backend = BACKENDS.webllm;
+        this.initialized = true;
+        return;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 3) {
+          if (onProgress) onProgress(`hiccup — retrying (${attempt}/3)...`);
+          await sleep(1500 * attempt);
+        }
+      }
+    }
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    throw new Error(`local model download failed: ${msg}`);
+  }
+
+  // Stream a response, yielding incremental text deltas.
+  async *stream(userText: string): AsyncGenerator<string> {
+    switch (this.backend.kind) {
+      case "gemini-nano":
+        yield* this.streamGemini(userText);
+        return;
+      case "workers-ai":
+        yield* this.streamWorkersAI(userText);
+        return;
+      case "webllm":
+        yield* this.streamWebLLM(userText);
+        return;
+      case "canned":
+        yield* streamString(answerFromFaq(userText));
+        return;
+    }
+  }
+
+  private async *streamGemini(userText: string): AsyncGenerator<string> {
+    if (!this.geminiSession) throw new Error("session not initialized");
+    const out = this.geminiSession.promptStreaming(userText);
+    let prev = "";
+    for await (const chunk of asyncIterable(out)) {
+      // The Prompt API has shipped both cumulative and delta streams; normalize.
+      if (prev.length > 0 && chunk.startsWith(prev)) {
+        yield chunk.slice(prev.length);
+        prev = chunk;
+      } else {
+        yield chunk;
+        prev += chunk;
+      }
+    }
+  }
+
+  private async *streamWorkersAI(userText: string): AsyncGenerator<string> {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: userText }),
+    });
+    if (!res.ok || !res.body) {
+      // Network/edge failure — fall back to canned so the user still gets an answer.
+      yield* streamString(answerFromFaq(userText));
       return;
     }
+    yield* parseSSE(res.body);
+  }
 
-    throw new Error("on-device AI isn't supported in this browser. try desktop Chrome.");
+  private async *streamWebLLM(userText: string): AsyncGenerator<string> {
+    if (!this.webllmEngine) throw new Error("engine not initialized");
+    const completion = await this.webllmEngine.chat.completions.create({
+      stream: true,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userText },
+      ],
+    });
+    for await (const chunk of completion) {
+      const delta = chunk?.choices?.[0]?.delta?.content ?? "";
+      if (delta) yield delta;
+    }
   }
 }
 
-// Normalize a ReadableStream<string> or AsyncIterable<string> into an async
-// iterable we can `for await` over.
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Stream a fixed string out word-by-word so canned answers feel typed.
+async function* streamString(text: string): AsyncGenerator<string> {
+  const tokens = text.split(/(\s+)/);
+  for (const tok of tokens) {
+    yield tok;
+    await sleep(12);
+  }
+}
+
+// Parse a Workers AI text/event-stream body into text deltas.
+async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") return;
+      try {
+        const json = JSON.parse(payload) as { response?: string };
+        if (json.response) yield json.response;
+      } catch {
+        /* ignore keep-alive / partial frames */
+      }
+    }
+  }
+}
+
+// Normalize ReadableStream<string> | AsyncIterable<string> into an async iterable.
 function asyncIterable(
   src: AsyncIterable<string> | ReadableStream<string>,
 ): AsyncIterable<string> {

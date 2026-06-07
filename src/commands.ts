@@ -10,6 +10,8 @@ export interface Ctx {
   llm: LLM;
   // Applies a theme and updates the title bar; returns false if unknown.
   applyThemeAndTitle: (name: string) => boolean;
+  // Updates the active-backend tag shown in the title bar.
+  updateBackendTag: (tag: string) => void;
 }
 
 export const SHELL_COMMANDS = [
@@ -27,7 +29,7 @@ export const SHELL_COMMANDS = [
   "help",
 ];
 
-export const CHAT_COMMANDS = ["/exit", "/clear", "/model", "/help"];
+export const CHAT_COMMANDS = ["/exit", "/clear", "/model", "/help", "/local"];
 
 // ---- small rendering helpers --------------------------------------------
 
@@ -281,13 +283,16 @@ function cmdHistory(term: Terminal): void {
 
 // ---- chat mode -----------------------------------------------------------
 
-const CHAT_HELP = [
-  "  ask anything about DV's work, projects, or background.",
-  "  commands: /exit · /clear · /model · /help",
-];
-
-function printChatHelp(term: Terminal): void {
-  for (const line of CHAT_HELP) {
+function printChatHelp(ctx: Ctx): void {
+  const { term, llm } = ctx;
+  const lines = ["  ask anything about DV's work, projects, or background."];
+  if (llm.canOfferWebLLM()) {
+    lines.push("  commands: /exit · /clear · /model · /local · /help");
+    lines.push("  /local downloads a private model (~0.9GB) to run fully in your browser.");
+  } else {
+    lines.push("  commands: /exit · /clear · /model · /help");
+  }
+  for (const line of lines) {
     const el = document.createElement("div");
     el.className = "line text";
     el.append(accentize(line));
@@ -298,20 +303,11 @@ function printChatHelp(term: Terminal): void {
 export async function enterChat(ctx: Ctx): Promise<void> {
   const { term, llm } = ctx;
 
-  if (llm.getBackend().kind === "none") {
-    term.println("on-device AI isn't supported in this browser. try desktop Chrome.");
-    return;
-  }
-
   printArrow(term, "detecting on-device LLM capabilities...");
-  const progress = printBullet(term, "download progress: 0%");
 
   term.setBusy(true);
   try {
-    await llm.init((text) => {
-      progress.replaceChildren(span("accent", "· "), document.createTextNode(text));
-    });
-    progress.replaceChildren(span("accent", "· "), document.createTextNode("download progress: 100%"));
+    await llm.init();
   } catch (err) {
     term.setBusy(false);
     const msg = err instanceof Error ? err.message : String(err);
@@ -321,8 +317,9 @@ export async function enterChat(ctx: Ctx): Promise<void> {
   term.setBusy(false);
 
   printArrow(term, llm.getBackend().label);
+  ctx.updateBackendTag(llm.getBackend().titleTag);
   term.println("");
-  printChatHelp(term);
+  printChatHelp(ctx);
 
   // Switch into chat mode.
   term.mode = "chat";
@@ -339,19 +336,65 @@ function exitChat(ctx: Ctx): void {
   term.setCompletions(SHELL_COMMANDS);
 }
 
+// Opt-in download of a fully-local in-browser model.
+async function chatLocal(ctx: Ctx, arg: string | undefined): Promise<void> {
+  const { term, llm } = ctx;
+
+  if (!llm.canOfferWebLLM()) {
+    if (llm.getBackend().kind === "webllm") {
+      term.println("already running a local model in your browser.");
+    } else if (llm.getBackend().kind === "gemini-nano") {
+      term.println("already running on-device via Gemini Nano — no download needed.");
+    } else {
+      term.println("local models need a WebGPU browser (desktop Chrome / Edge).");
+    }
+    return;
+  }
+
+  if (arg !== "yes") {
+    printArrow(term, "local model: Llama-3.2-1B, ~0.9GB one-time download.");
+    term.println("  runs fully in your browser. nothing leaves your device. cached for next time.");
+    term.println("  type /local yes to download, or keep chatting on the current backend.");
+    return;
+  }
+
+  const progress = printBullet(term, "download progress: 0%");
+  term.setBusy(true);
+  try {
+    await llm.enableWebLLM((text) => {
+      progress.replaceChildren(span("accent", "· "), document.createTextNode(text));
+    });
+    progress.replaceChildren(
+      span("accent", "· "),
+      document.createTextNode("download progress: 100%"),
+    );
+    printArrow(term, llm.getBackend().label);
+    ctx.updateBackendTag(llm.getBackend().titleTag);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    term.println(msg, "dim");
+    term.println("  staying on the current backend. you can retry /local yes anytime.", "dim");
+  } finally {
+    term.setBusy(false);
+  }
+}
+
 export async function runChatInput(ctx: Ctx, input: string): Promise<void> {
   const { term, llm } = ctx;
 
   if (input.startsWith("/")) {
-    const cmd = input.toLowerCase();
+    const parts = input.split(/\s+/);
+    const cmd = (parts[0] ?? "").toLowerCase();
     if (cmd === "/exit") {
       exitChat(ctx);
     } else if (cmd === "/clear") {
       term.clear();
     } else if (cmd === "/model") {
       term.println(llm.getBackend().modelLabel);
+    } else if (cmd === "/local") {
+      await chatLocal(ctx, parts[1]?.toLowerCase());
     } else if (cmd === "/help") {
-      printChatHelp(term);
+      printChatHelp(ctx);
     } else {
       term.println(`unknown command: ${input}. try /help`);
     }

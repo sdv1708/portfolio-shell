@@ -1,20 +1,39 @@
 # portfolio-shell
 
-A static terminal portfolio for Sanjay Dari Veerabasappa (DV). Custom
-div-based terminal emulator — no xterm.js, no frameworks. On-device LLM chat
-via the Chrome Prompt API (Gemini Nano) with a WebLLM (WebGPU) fallback.
+A terminal portfolio for Sanjay Dari Veerabasappa. Custom div-based terminal
+emulator — no xterm.js, no frameworks. The static site is served from a small
+Cloudflare Worker that also exposes one edge AI route, so `ask` works for
+*every* visitor without a multi-GB download.
+
+## AI backend cascade
+
+`ask` picks the best available backend automatically — fastest-acceptable wins,
+and it always returns *something* instantly:
+
+1. **Gemini Nano** — Chrome Prompt API, on-device, zero download.
+2. **Cloudflare Workers AI** — Llama 3.1 at the edge, instant, no API key
+   (first-party binding), free-tier friendly. The default for most visitors.
+3. **Canned Q&A** — offline string matching over common questions. Last resort
+   when neither of the above is reachable (e.g. local `vite preview`).
+
+**WebLLM is opt-in only.** In chat, `/local` downloads a ~0.9GB Llama-3.2-1B to
+run fully in the browser — for visitors who want 100% private/offline inference.
+It is hardened against the usual `Cache.add()` failures (persistent storage,
+quota pre-check, IndexedDB cache, resume-on-retry) and never runs automatically.
 
 ## Stack
 
 - Vite + TypeScript (strict mode), native DOM APIs, CSS
-- No backend, no API keys, no localStorage/cookies, no analytics
-- Optional, lazy-loaded `@mlc-ai/web-llm` from CDN (only when WebGPU is used)
+- Cloudflare Worker (`worker/index.ts`): Static Assets + `/api/chat` (Workers AI)
+- No API keys, no localStorage/cookies, no analytics, no external DB
+- Optional, lazy-loaded `@mlc-ai/web-llm` from CDN (only when `/local` is used)
 
 ## Develop
 
 ```bash
 npm install
-npm run dev
+npm run dev        # vite — UI only; ask falls back to canned Q&A (no /api)
+npm run cf-dev     # build + wrangler dev — full stack incl. Workers AI
 ```
 
 ## Build
@@ -23,16 +42,15 @@ npm run dev
 npm run build      # tsc + vite build -> dist/
 ```
 
-The output in `dist/` is fully static.
-
-## Deploy (Cloudflare Workers Static Assets)
+## Deploy (Cloudflare Workers)
 
 ```bash
-npm run build
-npx wrangler deploy
+npm run deploy     # build + wrangler deploy
 ```
 
-See `wrangler.jsonc`.
+The Worker serves `dist/` as Static Assets and adds `/api/chat` (Workers AI)
+and `/api/health`. The `AI` binding needs no secret — see `wrangler.jsonc`.
+First deploy will prompt you to authenticate with Cloudflare.
 
 ## Source layout
 
@@ -41,9 +59,12 @@ See `wrangler.jsonc`.
 | `src/main.ts`   | entry, mobile gate, title bar, boot sequence, router      |
 | `src/terminal.ts` | div terminal: render, input, history, tab, cursor       |
 | `src/commands.ts` | command handlers + static portfolio content             |
-| `src/llm.ts`    | capability detection, Gemini Nano, WebLLM, streaming      |
+| `src/llm.ts`    | backend cascade, Gemini Nano, Workers AI, WebLLM, streaming |
+| `src/faq.ts`    | offline canned Q&A (last-resort fallback)                 |
+| `src/system-prompt.ts` | shared system prompt + knowledge base (DOM-free)   |
 | `src/themes.ts` | theme definitions + runtime switching                     |
-| `src/ascii.ts`  | hardcoded DV ASCII banner                                 |
+| `src/ascii.ts`  | hardcoded ASCII banner                                    |
+| `worker/index.ts` | Cloudflare Worker: Static Assets + `/api/chat` (Workers AI) |
 
 ## Commands
 
@@ -52,8 +73,7 @@ history · clear · exit · help`
 
 Themes: `espresso` (default), `dracula`, `matrix` — switch with `theme [name]`.
 
-Type `ask` to chat with an on-device LLM. In chat mode: `/exit · /clear ·
-/model · /help`.
+Type `ask` to chat. In chat mode: `/exit · /clear · /model · /help`, plus
+`/local` (opt-in in-browser model) where WebGPU is available.
 
-> On-device AI requires desktop Chrome with the Prompt API, or a browser with
-> WebGPU. Mobile viewports (`< 768px`) show a desktop-only notice.
+> Mobile viewports (`< 768px`) show a desktop-only notice.

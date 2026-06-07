@@ -91,6 +91,10 @@ body {
   color: var(--command);
 }
 
+.title-backend {
+  color: var(--accent);
+}
+
 /* ---- terminal ---- */
 
 .terminal-root {

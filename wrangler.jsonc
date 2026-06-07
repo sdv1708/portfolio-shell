@@ -1,9 +1,21 @@
 {
-  // Cloudflare Workers Static Assets. Pure static deploy — no Worker script,
-  // no backend. Build with `npm run build`, then `wrangler deploy`.
+  // Cloudflare Worker that serves the static site (Static Assets) AND a tiny
+  // edge AI endpoint (Workers AI). No API keys — the AI binding is first-party.
+  //
+  //   npm run build        -> dist/ (frontend)
+  //   npx wrangler dev      -> run worker + assets + AI locally
+  //   npx wrangler deploy   -> ship it
   "name": "portfolio-shell",
+  "main": "worker/index.ts",
   "compatibility_date": "2025-01-01",
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "observability": {
+    "enabled": true
   }
 }

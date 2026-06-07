@@ -38,6 +38,7 @@ function renderMobile(): void {
 // ---- desktop ----
 
 let titleThemeEl: HTMLElement;
+let titleBackendEl: HTMLElement;
 
 function buildChrome(): { titleBar: HTMLElement; root: HTMLElement } {
   app.innerHTML = "";
@@ -58,7 +59,11 @@ function buildChrome(): { titleBar: HTMLElement; root: HTMLElement } {
 
   const title = document.createElement("div");
   title.className = "title";
-  title.append(document.createTextNode("sdv@dev — ai (on-device) — "));
+  title.append(document.createTextNode("sdv@dev — "));
+  titleBackendEl = document.createElement("span");
+  titleBackendEl.className = "title-backend";
+  titleBackendEl.textContent = "ai";
+  title.append(titleBackendEl, document.createTextNode(" — "));
   titleThemeEl = document.createElement("span");
   titleThemeEl.className = "title-theme";
   title.append(titleThemeEl);
@@ -75,6 +80,10 @@ function buildChrome(): { titleBar: HTMLElement; root: HTMLElement } {
 
 function setTitleTheme(name: string): void {
   if (titleThemeEl) titleThemeEl.textContent = name;
+}
+
+function setTitleBackend(tag: string): void {
+  if (titleBackendEl) titleBackendEl.textContent = tag;
 }
 
 function printOk(term: Terminal, text: string): HTMLElement {
@@ -104,7 +113,7 @@ async function boot(term: Terminal, llm: LLM): Promise<void> {
   printOk(term, "system ready");
   await sleep(350);
 
-  // Insert the on-device LLM status directly beneath the "checking..." line.
+  // Insert the LLM status directly beneath the "checking..." line.
   const backend = await detection;
   const status = document.createElement("div");
   status.className = "line";
@@ -113,6 +122,7 @@ async function boot(term: Terminal, llm: LLM): Promise<void> {
   arrow.textContent = "→ ";
   status.append(arrow, document.createTextNode(backend.label));
   checking.after(status);
+  setTitleBackend(backend.titleTag);
 
   await sleep(200);
 
@@ -120,7 +130,7 @@ async function boot(term: Terminal, llm: LLM): Promise<void> {
   term.printBlock(DV_ASCII, "ascii");
   term.println("");
   term.println(
-    "welcome. type 'help' for commands, or 'ask' to chat with a local LLM about my work.",
+    "welcome. type 'help' for commands, or 'ask' to chat about my work.",
   );
   term.println("");
 }
@@ -164,6 +174,7 @@ function startTerminal(): void {
       if (ok) setTitleTheme(name);
       return ok;
     },
+    updateBackendTag: setTitleBackend,
   };
 
   term.onLine = async (raw: string) => {
