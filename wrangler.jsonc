@@ -15,6 +15,12 @@
   "ai": {
     "binding": "AI"
   },
+  // Custom domain (apex). Requires the sdv1708.dev zone to be on this
+  // Cloudflare account and the deploy token to have Zone -> DNS: Edit, since
+  // attaching a custom domain creates a proxied DNS record.
+  "routes": [
+    { "pattern": "sdv1708.dev", "custom_domain": true }
+  ],
   "observability": {
     "enabled": true
   }
