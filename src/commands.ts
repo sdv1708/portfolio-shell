@@ -40,6 +40,18 @@ function span(cls: string, text: string): HTMLSpanElement {
   return s;
 }
 
+// An external link that opens in a new tab. The terminal's click-to-focus
+// handler ignores <a> elements so these stay clickable.
+function link(text: string, href: string): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.className = "entry-link";
+  a.href = href;
+  a.textContent = text;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
 // Wrap `·` bullets and `→` arrows in accent-colored spans within `text`.
 function accentize(text: string): DocumentFragment {
   const frag = document.createDocumentFragment();
@@ -144,95 +156,161 @@ function cmdSkills(term: Terminal): void {
   term.printNode(frag);
 }
 
+interface Project {
+  name: string;
+  repo: string; // github.com/... (no scheme)
+  tech: string;
+  desc: string;
+}
+
+const PROJECTS: Project[] = [
+  {
+    name: "PostMortem AI",
+    repo: "github.com/sdv1708/postmortem",
+    tech: "Python · TypeScript · PostgreSQL · Playwright",
+    desc:
+      "A six-stage incident-postmortem pipeline that turns raw logs and traces into reviewed, " +
+      "citation-backed reports. Every claim is validated against its source evidence — hallucinated " +
+      "claims are automatically retried, and uncited claims are flagged as assumptions. An " +
+      "LLM-as-judge scores each draft against a rubric, with full experiment versioning so prompt " +
+      "and model changes stay measurable.",
+  },
+  {
+    name: "Clinical Decision Support System",
+    repo: "github.com/sdv1708/Diagnostic-Stack",
+    tech: "Google ADK · Gemini · MCP · RAG · Cloud Run",
+    desc:
+      "A three-agent coordinator that retrieves clinical context and drafts decision support under " +
+      "guardrails. A coordinator routes between specialist agents that call MCP tool handlers, with " +
+      "responsible-AI checks on every response and an eval-gated CI/CD pipeline that blocks deploys " +
+      "when quality scores regress. Runs serverless on Cloud Run.",
+  },
+  {
+    name: "Executive Intelligence Copilot",
+    repo: "github.com/sdv1708/intelligence_copilot",
+    tech: "LangChain · FAISS · SQLite",
+    desc:
+      "A multi-agent assistant for executive decision support. Tool-calling workflows route each " +
+      "query to the right function — semantic search over a FAISS vector store, structured lookups " +
+      "against SQLite — then compose the results into concise, sourced answers.",
+  },
+  {
+    name: "GPT from Scratch",
+    repo: "github.com/sdv1708/gpt-scratch",
+    tech: "Python · PyTorch",
+    desc:
+      "A decoder-only GPT language model built from the ground up in PyTorch — tokenization, " +
+      "multi-head causal self-attention, positional embeddings, and the training loop all " +
+      "implemented by hand to understand transformer internals end to end.",
+  },
+];
+
 function cmdProjects(term: Terminal): void {
   const frag = document.createDocumentFragment();
 
-  const projects: { name: string; pad: number; tech: string; body: string[] }[] = [
-    {
-      name: "PostMortem AI",
-      pad: 24,
-      tech: "Python · TypeScript · PostgreSQL · Playwright",
-      body: [
-        "  six-stage postmortem pipeline. immutable citation validation — hallucinated claims retry,",
-        "  uncited claims flagged as assumptions. LLM-as-judge rubric scoring + experiment versioning.",
-      ],
-    },
-    {
-      name: "Clinical Decision Support System",
-      pad: 36,
-      tech: "Google ADK · Gemini · MCP · RAG · Cloud Run",
-      body: ["  3-agent coordinator pattern. MCP tool handlers, RAI guardrails, eval-gated CI/CD."],
-    },
-    {
-      name: "Executive Intelligence Copilot",
-      pad: 36,
-      tech: "LangChain · FAISS · SQLite",
-      body: [
-        "  multi-agent system with tool-calling workflows, function-level routing, structured decision support.",
-      ],
-    },
-  ];
+  for (const p of PROJECTS) {
+    const entry = document.createElement("div");
+    entry.className = "entry";
 
-  for (const p of projects) {
     const head = document.createElement("div");
-    head.className = "block";
-    head.append(span("command", p.name.padEnd(p.pad)), accentize(p.tech));
-    frag.append(head);
-    for (const b of p.body) {
-      const line = document.createElement("div");
-      line.className = "block text";
-      line.textContent = b;
-      frag.append(line);
-    }
-    frag.append(document.createElement("br"));
+    head.className = "entry-head";
+    head.append(span("entry-title", p.name));
+    frag.append(entry);
+
+    const tech = document.createElement("div");
+    tech.className = "entry-tech";
+    tech.append(accentize(p.tech));
+
+    const repo = document.createElement("div");
+    repo.className = "entry-repo";
+    repo.append(span("accent", "↳ "), link(p.repo, "https://" + p.repo));
+
+    const desc = document.createElement("div");
+    desc.className = "entry-desc";
+    desc.textContent = p.desc;
+
+    entry.append(head, tech, repo, desc);
   }
+
+  // Pointer to the rest of the work on GitHub.
+  const more = document.createElement("div");
+  more.className = "entry-more";
+  more.append(
+    document.createTextNode("more projects on github "),
+    span("accent", "→ "),
+    link("github.com/sdv1708", "https://github.com/sdv1708"),
+  );
+  frag.append(more);
+
   term.printNode(frag);
 }
+
+interface Role {
+  title: string;
+  meta: string;
+  bullets: string[];
+}
+
+const ROLES: Role[] = [
+  {
+    title: "Connyct CampusAI — Software Engineer Intern, AI",
+    meta: "Sep–Dec 2025 · New York",
+    bullets: [
+      "Built a retrieval pipeline over Elasticsearch with SentenceTransformers embeddings and " +
+        "Redis caching, using multi-signal ranking to return relevant results in under two seconds " +
+        "on AWS ECS.",
+      "Stood up an LLM evaluation framework (DeepEval, Confident AI) wired into CI/CD, gating model " +
+        "deploys on measured answer quality rather than guesswork.",
+    ],
+  },
+  {
+    title: "UMD Community Preservation Trust — Software Engineer",
+    meta: "Feb–Dec 2025 · Maryland",
+    bullets: [
+      "Built a full-stack application (React, Flask, MySQL) with JWT/RBAC authentication that " +
+        "replaced paper-based workflows for a community of 15K+ users.",
+    ],
+  },
+  {
+    title: "IQVIA — Software Engineer, AI & Backend",
+    meta: "Jul 2022–Jul 2024 · Bangalore",
+    bullets: [
+      "Shipped a GPT-3.5 NLP platform on Azure Functions that reached 95% extraction accuracy on " +
+        "regulated compliance documents.",
+      "Built an Airflow invoice-processing pipeline with a Tesseract → Donut OCR fallback, " +
+        "improving throughput by 70%.",
+      "Designed distributed microservices (Docker, Kubernetes, Azure Service Bus) sustaining 3K+ " +
+        "messages per second.",
+      "Built REST APIs (FastAPI, PostgreSQL) backing 1.2M+ annual transactions at sub-second " +
+        "latency.",
+    ],
+  },
+];
 
 function cmdExperience(term: Terminal): void {
   const frag = document.createDocumentFragment();
 
-  const roles: { head: string; pad: number; meta: string; body: string[] }[] = [
-    {
-      head: "Connyct CampusAI — Software Engineer Intern, AI",
-      pad: 57,
-      meta: "Sep–Dec 2025 · New York",
-      body: [
-        "  RAG pipeline (Elasticsearch, SentenceTransformers, Redis), multisignal ranking, ≤2s on AWS ECS.",
-        "  LLM eval framework (DeepEval, Confident AI) gating model deploys in CI/CD.",
-      ],
-    },
-    {
-      head: "UMD Community Preservation Trust — SDE",
-      pad: 57,
-      meta: "Feb–Dec 2025 · Maryland",
-      body: ["  Full-stack (React, Flask, MySQL, JWT/RBAC) replacing paper workflows for 15K+ users."],
-    },
-    {
-      head: "IQVIA — SDE, AI & Backend",
-      pad: 57,
-      meta: "Jul 2022–Jul 2024 · Bangalore",
-      body: [
-        "  GPT-3.5 NLP platform (Azure Functions), 95% extraction accuracy on compliance docs.",
-        "  Airflow invoice pipeline (Tesseract → Donut fallback), 70% throughput improvement.",
-        "  Distributed microservices (Docker, Kubernetes, Azure Service Bus), 3K+ msgs/sec.",
-        "  REST APIs (FastAPI, PostgreSQL), 1.2M+ annual transactions, sub-second latency.",
-      ],
-    },
-  ];
+  for (const r of ROLES) {
+    const entry = document.createElement("div");
+    entry.className = "entry";
 
-  for (const r of roles) {
     const head = document.createElement("div");
-    head.className = "block";
-    head.append(span("command", r.head.padEnd(r.pad)), span("dim", r.meta));
-    frag.append(head);
-    for (const b of r.body) {
+    head.className = "entry-head";
+    head.append(span("entry-title", r.title));
+
+    const meta = document.createElement("div");
+    meta.className = "entry-meta";
+    meta.append(accentize(r.meta));
+
+    entry.append(head, meta);
+
+    for (const b of r.bullets) {
       const line = document.createElement("div");
-      line.className = "block text";
-      line.append(accentize(b));
-      frag.append(line);
+      line.className = "entry-bullet";
+      line.append(span("accent", "· "), document.createTextNode(b));
+      entry.append(line);
     }
-    frag.append(document.createElement("br"));
+    frag.append(entry);
   }
   term.printNode(frag);
 }
@@ -382,22 +460,29 @@ async function chatLocal(ctx: Ctx, arg: string | undefined): Promise<void> {
 export async function runChatInput(ctx: Ctx, input: string): Promise<void> {
   const { term, llm } = ctx;
 
-  if (input.startsWith("/")) {
-    const parts = input.split(/\s+/);
-    const cmd = (parts[0] ?? "").toLowerCase();
-    if (cmd === "/exit") {
+  // Treat the chat commands as commands whether or not they're prefixed with
+  // a slash — typing `exit` or `clear` (no slash) is a common reflex, and
+  // silently sending those to the LLM is surprising.
+  const parts = input.split(/\s+/);
+  const word = (parts[0] ?? "").toLowerCase();
+  const cmd = word.replace(/^\//, "");
+  const KNOWN = new Set(["exit", "quit", "clear", "model", "local", "help"]);
+  if (KNOWN.has(cmd)) {
+    if (cmd === "exit" || cmd === "quit") {
       exitChat(ctx);
-    } else if (cmd === "/clear") {
+    } else if (cmd === "clear") {
       term.clear();
-    } else if (cmd === "/model") {
+    } else if (cmd === "model") {
       term.println(llm.getBackend().modelLabel);
-    } else if (cmd === "/local") {
+    } else if (cmd === "local") {
       await chatLocal(ctx, parts[1]?.toLowerCase());
-    } else if (cmd === "/help") {
+    } else if (cmd === "help") {
       printChatHelp(ctx);
-    } else {
-      term.println(`unknown command: ${input}. try /help`);
     }
+    return;
+  }
+  if (word.startsWith("/")) {
+    term.println(`unknown command: ${input}. try /help`);
     return;
   }
 

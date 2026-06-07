@@ -292,6 +292,8 @@ export class Terminal {
     const after = document.createTextNode(value.slice(pos + 1));
 
     this.renderEl.replaceChildren(before, cursor, after);
+    // Keep the (possibly multi-line, wrapping) input line in view as it grows.
+    this.scroll();
   }
 }
 

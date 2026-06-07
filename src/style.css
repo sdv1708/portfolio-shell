@@ -104,7 +104,7 @@ body {
 }
 
 .terminal {
-  padding: 16px 18px 28px;
+  padding: 16px 18px 44px;
   min-height: 100%;
 }
 
@@ -146,6 +146,56 @@ body {
 }
 .text {
   color: var(--text);
+}
+
+/* ---- projects / experience entries (wrapping, constrained width) ---- */
+
+.entry {
+  max-width: 760px;
+  margin: 2px 0 18px;
+}
+
+.entry-title {
+  color: var(--command);
+  font-weight: 700;
+}
+
+.entry-tech,
+.entry-meta {
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+.entry-repo {
+  margin-top: 2px;
+}
+
+.entry-desc {
+  color: var(--text);
+  margin-top: 4px;
+  white-space: normal;
+}
+
+.entry-bullet {
+  color: var(--text);
+  margin-top: 4px;
+  padding-left: 1.4em;
+  text-indent: -1.4em;
+  white-space: normal;
+}
+
+.entry-more {
+  color: var(--text);
+  margin: 6px 0 4px;
+}
+
+.entry-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.entry-link:hover {
+  text-decoration: underline;
 }
 
 /* ---- input line ---- */
