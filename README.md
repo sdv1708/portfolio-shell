@@ -52,6 +52,21 @@ The Worker serves `dist/` as Static Assets and adds `/api/chat` (Workers AI)
 and `/api/health`. The `AI` binding needs no secret — see `wrangler.jsonc`.
 First deploy will prompt you to authenticate with Cloudflare.
 
+### Auto-deploy on push (CI)
+
+`.github/workflows/deploy.yml` builds and deploys on every push to `main` or
+`claude/terminal-portfolio-vite-yVenn`. One-time setup — add two repo secrets
+(GitHub → Settings → Secrets and variables → Actions):
+
+| Secret | Where to get it |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com → My Profile → API Tokens → Create Token. Use the **Edit Cloudflare Workers** template, then add **Account → Workers AI → Read** so the `AI` binding deploys. |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → Workers & Pages → right sidebar **Account ID**. |
+
+After the secrets exist, the next push ships automatically. Trigger it by hand
+anytime from the Actions tab (**Run workflow**). To deploy only from `main`,
+drop the feature branch from the workflow's `on.push.branches`.
+
 ## Source layout
 
 | File            | Responsibility                                            |
