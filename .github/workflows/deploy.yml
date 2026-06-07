@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-      - claude/terminal-portfolio-vite-yVenn
   workflow_dispatch: {}
 
 # Don't let overlapping pushes race each other onto the same Worker.
