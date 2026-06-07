@@ -1,0 +1,257 @@
+:root {
+  --bg: #1a120b;
+  --text: #f5f0e8;
+  --command: #e8820c;
+  --prompt: #e8820c;
+  --ok: #8a9a7b;
+  --accent: #4caf50;
+  --ai: #4caf50;
+  --dim: #a89a88;
+
+  --font: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---- window + macOS-style title bar ---- */
+
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+.dots {
+  display: flex;
+  gap: 8px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.red {
+  background: #ff5f56;
+}
+.dot.yellow {
+  background: #ffbd2e;
+}
+.dot.green {
+  background: #27c93f;
+}
+
+.title {
+  flex: 1;
+  text-align: center;
+  color: var(--dim);
+  font-size: 13px;
+  margin-right: 56px; /* balance the dots so the title stays centered */
+}
+
+.title-theme {
+  color: var(--command);
+}
+
+/* ---- terminal ---- */
+
+.terminal-root {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  position: relative;
+}
+
+.terminal {
+  padding: 16px 18px 28px;
+  min-height: 100%;
+}
+
+.output .line,
+.output .block {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.output .block {
+  white-space: pre-wrap;
+}
+
+.ascii {
+  color: var(--command);
+  line-height: 1.1;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.command {
+  color: var(--command);
+  white-space: pre;
+}
+.prompt {
+  color: var(--prompt);
+}
+.ok {
+  color: var(--ok);
+}
+.accent {
+  color: var(--accent);
+}
+.ai {
+  color: var(--ai);
+}
+.dim {
+  color: var(--dim);
+}
+.text {
+  color: var(--text);
+}
+
+/* ---- input line ---- */
+
+.input-line {
+  display: flex;
+  align-items: baseline;
+  white-space: pre;
+}
+
+.input-line .prompt {
+  margin-right: 8px;
+}
+
+.input-render {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cursor {
+  background: var(--text);
+  color: var(--bg);
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    background: var(--text);
+    color: var(--bg);
+  }
+  50.01%,
+  100% {
+    background: transparent;
+    color: var(--text);
+  }
+}
+
+.hidden-input {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+/* ---- CRT effect: scanlines + vignette ---- */
+
+#app::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.03) 0px,
+    rgba(0, 0, 0, 0.03) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+}
+
+#app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 49;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 60%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+}
+
+/* ---- mobile gate ---- */
+
+.mobile {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 18px;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+.mobile-prompt {
+  color: var(--prompt);
+  font-size: 16px;
+}
+
+.mobile-msg {
+  white-space: pre-line;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* scrollbar */
+.terminal-root::-webkit-scrollbar {
+  width: 10px;
+}
+.terminal-root::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+}

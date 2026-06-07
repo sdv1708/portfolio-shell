@@ -1,0 +1,9 @@
+{
+  // Cloudflare Workers Static Assets. Pure static deploy — no Worker script,
+  // no backend. Build with `npm run build`, then `wrangler deploy`.
+  "name": "portfolio-shell",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
