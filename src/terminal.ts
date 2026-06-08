@@ -179,14 +179,16 @@ export class Terminal {
   }
 
   private bindEvents(): void {
-    // Click anywhere focuses input (unless selecting text).
-    this.root.addEventListener("mousedown", (e) => {
+    // Focus the input on a plain click, but never steal focus mid-selection.
+    // Using `click` (fires on mouseup, after a drag completes) and bailing when
+    // text is selected lets users select and copy output normally — focusing
+    // on `mousedown` used to collapse the selection as it formed.
+    this.root.addEventListener("click", (e) => {
       const target = e.target as HTMLElement;
       if (target.tagName === "A") return; // allow link clicks
       const sel = window.getSelection();
-      if (sel && sel.toString().length > 0) return; // preserve selections
-      // Defer so the browser finishes its own focus/selection handling.
-      setTimeout(() => this.focus(), 0);
+      if (sel && sel.toString().length > 0) return; // a selection exists — leave it
+      this.focus();
     });
 
     this.inputEl.addEventListener("input", () => this.renderInput());

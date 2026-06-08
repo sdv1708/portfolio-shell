@@ -103,6 +103,11 @@ body {
   position: relative;
 }
 
+/* Output is freely selectable / copyable. */
+.output {
+  user-select: text;
+}
+
 .terminal {
   padding: 16px 18px 44px;
   min-height: 100%;
