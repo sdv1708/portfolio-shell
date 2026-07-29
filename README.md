@@ -73,18 +73,22 @@ drop the feature branch from the workflow's `on.push.branches`.
 | --------------- | --------------------------------------------------------- |
 | `src/main.ts`   | entry, mobile gate, title bar, boot sequence, router      |
 | `src/terminal.ts` | div terminal: render, input, history, tab, cursor       |
-| `src/commands.ts` | command handlers + static portfolio content             |
+| `src/profile.ts` | canonical profile, projects, experience, skills, contact |
+| `src/commands.ts` | command handlers and profile presentation               |
 | `src/llm.ts`    | backend cascade, Gemini Nano, Workers AI, WebLLM, streaming |
 | `src/faq.ts`    | offline canned Q&A (last-resort fallback)                 |
-| `src/system-prompt.ts` | shared system prompt + knowledge base (DOM-free)   |
+| `src/system-prompt.ts` | system instructions + generated profile context    |
 | `src/themes.ts` | theme definitions + runtime switching                     |
 | `src/ascii.ts`  | hardcoded ASCII banner                                    |
 | `worker/index.ts` | Cloudflare Worker: Static Assets + `/api/chat` (Workers AI) |
 
 ## Commands
 
-`ask · whoami · about · skills · projects · experience · contact · theme ·
-history · clear · exit · help`
+`ask · profile · whoami · about · skills · projects · experience · education ·
+contact · theme · history · clear · exit · help`
+
+Update public profile facts in `src/profile.ts`. The terminal views, offline
+Q&A, and all LLM backends consume that same record.
 
 Themes: `espresso` (default), `dracula`, `matrix` — switch with `theme [name]`.
 

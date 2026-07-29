@@ -4,6 +4,7 @@
 import { Terminal } from "./terminal.ts";
 import { LLM } from "./llm.ts";
 import { themeNames } from "./themes.ts";
+import { PROFILE, type ProjectStatus } from "./profile.ts";
 
 export interface Ctx {
   term: Terminal;
@@ -16,11 +17,13 @@ export interface Ctx {
 
 export const SHELL_COMMANDS = [
   "ask",
+  "profile",
   "whoami",
   "about",
   "skills",
   "projects",
   "experience",
+  "education",
   "contact",
   "theme",
   "history",
@@ -96,12 +99,14 @@ function row(leftCls: string, left: string, pad: number, right: string): HTMLEle
 
 function cmdHelp(term: Terminal): void {
   const rows: [string, string][] = [
-    ["ask", "chat with on-device LLM"],
+    ["ask", "chat about my work"],
+    ["profile", "complete profile"],
     ["whoami", "one-line bio"],
     ["about", "longer intro"],
     ["skills", "stack"],
     ["projects", "selected work"],
     ["experience", "selected roles"],
+    ["education", "degrees"],
     ["contact", "contact info"],
     ["theme", "switch theme"],
     ["history", "show history"],
@@ -119,195 +124,140 @@ function cmdHelp(term: Terminal): void {
 }
 
 function cmdWhoami(term: Terminal): void {
-  term.println("sanjay dari veerabasappa. backend + AI engineer. chicago, il.");
+  term.println(
+    `${PROFILE.fullName.toLowerCase()}. ${PROFILE.headline.toLowerCase()}. ` +
+      `${PROFILE.location.toLowerCase()}.`,
+  );
 }
 
 function cmdAbout(term: Terminal): void {
   term.printBlock(
-    "MS Information Systems, UMD Robert H. Smith (Dec 2025). 2+ years production " +
-      "SWE at IQVIA, Bengaluru. Currently building AI systems — RAG pipelines, " +
-      "multi-agent orchestration, LLM evaluation. On OPT. Looking for backend / " +
-      "AI engineering roles.",
+    `${PROFILE.summary} ${PROFILE.workAuthorization}. Looking for ` +
+      `${PROFILE.targetRoles.join(" / ")} roles.`,
   );
 }
 
 function cmdSkills(term: Terminal): void {
   const pad = 24;
   const frag = document.createDocumentFragment();
-  const items: [string, string][] = [
-    [
-      "languages & databases",
-      "Python · Java · SQL · PostgreSQL · MySQL · Redis · Elasticsearch",
-    ],
-    ["backend", "FastAPI · Flask · Microservices · Kafka · Airflow"],
-    [
-      "ml / ai",
-      "LLMs · RAG · LangChain · LangGraph · PyTorch · Scikit-learn · Hugging Face · DeepEval",
-    ],
-    [
-      "cloud & tools",
-      "AWS · Azure · Docker · Kubernetes · CI/CD · Linux · Claude Code · Cursor",
-    ],
-  ];
-  for (const [cat, val] of items) {
-    frag.append(row("dim", cat, pad, val));
+  for (const group of PROFILE.skills) {
+    frag.append(row("dim", group.label, pad, group.items.join(" · ")));
     frag.append(document.createElement("br"));
   }
   term.printNode(frag);
 }
 
-interface Project {
-  name: string;
-  repo: string; // github.com/... (no scheme)
-  tech: string;
-  desc: string;
-}
-
-const PROJECTS: Project[] = [
-  {
-    name: "PostMortem AI",
-    repo: "github.com/sdv1708/postmortem",
-    tech: "Python · TypeScript · PostgreSQL · Playwright",
-    desc:
-      "A six-stage incident-postmortem pipeline that turns raw logs and traces into reviewed, " +
-      "citation-backed reports. Every claim is validated against its source evidence — hallucinated " +
-      "claims are automatically retried, and uncited claims are flagged as assumptions. An " +
-      "LLM-as-judge scores each draft against a rubric, with full experiment versioning so prompt " +
-      "and model changes stay measurable.",
-  },
-  {
-    name: "Clinical Decision Support System",
-    repo: "github.com/sdv1708/Diagnostic-Stack",
-    tech: "Google ADK · Gemini · MCP · RAG · Cloud Run",
-    desc:
-      "A three-agent coordinator that retrieves clinical context and drafts decision support under " +
-      "guardrails. A coordinator routes between specialist agents that call MCP tool handlers, with " +
-      "responsible-AI checks on every response and an eval-gated CI/CD pipeline that blocks deploys " +
-      "when quality scores regress. Runs serverless on Cloud Run.",
-  },
-  {
-    name: "Executive Intelligence Copilot",
-    repo: "github.com/sdv1708/intelligence_copilot",
-    tech: "LangChain · FAISS · SQLite",
-    desc:
-      "A multi-agent assistant for executive decision support. Tool-calling workflows route each " +
-      "query to the right function — semantic search over a FAISS vector store, structured lookups " +
-      "against SQLite — then compose the results into concise, sourced answers.",
-  },
-  {
-    name: "GPT from Scratch",
-    repo: "github.com/sdv1708/gpt-scratch",
-    tech: "Python · PyTorch",
-    desc:
-      "A decoder-only GPT language model built from the ground up in PyTorch — tokenization, " +
-      "multi-head causal self-attention, positional embeddings, and the training loop all " +
-      "implemented by hand to understand transformer internals end to end.",
-  },
+const PROJECT_GROUPS: { status: ProjectStatus; label: string }[] = [
+  { status: "featured", label: "featured" },
+  { status: "open-source", label: "open-source contributions" },
+  { status: "in-progress", label: "in progress" },
+  { status: "additional", label: "additional work" },
 ];
 
 function cmdProjects(term: Terminal): void {
   const frag = document.createDocumentFragment();
 
-  for (const p of PROJECTS) {
-    const entry = document.createElement("div");
-    entry.className = "entry";
+  for (const group of PROJECT_GROUPS) {
+    const projects = PROFILE.projects.filter(
+      (project) => project.status === group.status,
+    );
+    if (projects.length === 0) continue;
 
-    const head = document.createElement("div");
-    head.className = "entry-head";
-    head.append(span("entry-title", p.name));
-    frag.append(entry);
+    const groupTitle = document.createElement("div");
+    groupTitle.className = "project-group-title command";
+    groupTitle.textContent = group.label;
+    frag.append(groupTitle);
 
-    const tech = document.createElement("div");
-    tech.className = "entry-tech";
-    tech.append(accentize(p.tech));
+    for (const project of projects) {
+      const entry = document.createElement("div");
+      entry.className = "entry";
 
-    const repo = document.createElement("div");
-    repo.className = "entry-repo";
-    repo.append(span("accent", "↳ "), link(p.repo, "https://" + p.repo));
+      const head = document.createElement("div");
+      head.className = "entry-head";
+      head.append(span("entry-title", project.name));
 
-    const desc = document.createElement("div");
-    desc.className = "entry-desc";
-    desc.textContent = p.desc;
+      const role = document.createElement("div");
+      role.className = "entry-meta";
+      role.textContent = project.role ?? "";
 
-    entry.append(head, tech, repo, desc);
+      const tech = document.createElement("div");
+      tech.className = "entry-tech";
+      tech.append(accentize(project.technologies.join(" · ")));
+
+      const repo = document.createElement("div");
+      repo.className = "entry-repo";
+      repo.append(
+        span("accent", "↳ "),
+        link(project.repo, "https://" + project.repo),
+      );
+
+      const desc = document.createElement("div");
+      desc.className = "entry-desc";
+      desc.textContent = project.description;
+
+      entry.append(head);
+      if (project.role) entry.append(role);
+      entry.append(tech, repo);
+
+      for (const projectLink of project.links ?? []) {
+        const linkLine = document.createElement("div");
+        linkLine.className = "entry-repo";
+        linkLine.append(
+          span("accent", "↳ "),
+          link(projectLink.label, projectLink.url),
+        );
+        entry.append(linkLine);
+      }
+
+      entry.append(desc);
+      for (const highlight of project.highlights) {
+        const highlightLine = document.createElement("div");
+        highlightLine.className = "entry-bullet";
+        highlightLine.append(
+          span("accent", "· "),
+          document.createTextNode(highlight),
+        );
+        entry.append(highlightLine);
+      }
+      frag.append(entry);
+    }
   }
 
   // Pointer to the rest of the work on GitHub.
+  const github = PROFILE.contacts.find((item) => item.label === "github");
   const more = document.createElement("div");
   more.className = "entry-more";
   more.append(
     document.createTextNode("more projects on github "),
     span("accent", "→ "),
-    link("github.com/sdv1708", "https://github.com/sdv1708"),
+    github?.href ? link(github.value, github.href) : document.createTextNode("github"),
   );
   frag.append(more);
 
   term.printNode(frag);
 }
 
-interface Role {
-  title: string;
-  meta: string;
-  bullets: string[];
-}
-
-const ROLES: Role[] = [
-  {
-    title: "Connyct CampusAI — Software Engineer Intern, AI",
-    meta: "Sep–Dec 2025 · New York",
-    bullets: [
-      "Built a retrieval pipeline over Elasticsearch with SentenceTransformers embeddings and " +
-        "Redis caching, using multi-signal ranking to return relevant results in under two seconds " +
-        "on AWS ECS.",
-      "Stood up an LLM evaluation framework (DeepEval, Confident AI) wired into CI/CD, gating model " +
-        "deploys on measured answer quality rather than guesswork.",
-    ],
-  },
-  {
-    title: "UMD Community Preservation Trust — Software Engineer",
-    meta: "Feb–Dec 2025 · Maryland",
-    bullets: [
-      "Built a full-stack application (React, Flask, MySQL) with JWT/RBAC authentication that " +
-        "replaced paper-based workflows for a community of 15K+ users.",
-    ],
-  },
-  {
-    title: "IQVIA — Software Engineer, AI & Backend",
-    meta: "Jul 2022–Jul 2024 · Bangalore",
-    bullets: [
-      "Shipped a GPT-3.5 NLP platform on Azure Functions that reached 95% extraction accuracy on " +
-        "regulated compliance documents.",
-      "Built an Airflow invoice-processing pipeline with a Tesseract → Donut OCR fallback, " +
-        "improving throughput by 70%.",
-      "Designed distributed microservices (Docker, Kubernetes, Azure Service Bus) sustaining 3K+ " +
-        "messages per second.",
-      "Built REST APIs (FastAPI, PostgreSQL) backing 1.2M+ annual transactions at sub-second " +
-        "latency.",
-    ],
-  },
-];
-
 function cmdExperience(term: Terminal): void {
   const frag = document.createDocumentFragment();
 
-  for (const r of ROLES) {
+  for (const role of PROFILE.experience) {
     const entry = document.createElement("div");
     entry.className = "entry";
 
     const head = document.createElement("div");
     head.className = "entry-head";
-    head.append(span("entry-title", r.title));
+    head.append(span("entry-title", `${role.company} — ${role.title}`));
 
     const meta = document.createElement("div");
     meta.className = "entry-meta";
-    meta.append(accentize(r.meta));
+    meta.append(accentize(`${role.dates} · ${role.location}`));
 
     entry.append(head, meta);
 
-    for (const b of r.bullets) {
+    for (const achievement of role.achievements) {
       const line = document.createElement("div");
       line.className = "entry-bullet";
-      line.append(span("accent", "· "), document.createTextNode(b));
+      line.append(span("accent", "· "), document.createTextNode(achievement));
       entry.append(line);
     }
     frag.append(entry);
@@ -316,20 +266,58 @@ function cmdExperience(term: Terminal): void {
 }
 
 function cmdContact(term: Terminal): void {
-  const rows: [string, string][] = [
-    ["email", "sanjaydv@umd.edu"],
-    ["linkedin", "linkedin.com/in/sanjaydv"],
-    ["github", "github.com/sdv1708"],
-    ["location", "chicago, il"],
-  ];
   const frag = document.createDocumentFragment();
-  for (const [label, value] of rows) {
+  for (const contact of PROFILE.contacts) {
     const line = document.createElement("div");
     line.className = "block";
-    line.append(span("command", label.padEnd(11)), span("text", value));
+    line.append(span("command", contact.label.padEnd(11)));
+    line.append(
+      contact.href ? link(contact.value, contact.href) : span("text", contact.value),
+    );
     frag.append(line);
   }
   term.printNode(frag);
+}
+
+function cmdEducation(term: Terminal): void {
+  const frag = document.createDocumentFragment();
+  for (const education of PROFILE.education) {
+    const entry = document.createElement("div");
+    entry.className = "entry";
+
+    const degree = document.createElement("div");
+    degree.className = "entry-head";
+    degree.append(span("entry-title", education.degree));
+
+    const meta = document.createElement("div");
+    meta.className = "entry-meta";
+    meta.textContent = `${education.institution} · ${education.graduation}`;
+
+    entry.append(degree, meta);
+    frag.append(entry);
+  }
+  term.printNode(frag);
+}
+
+function printSection(term: Terminal, title: string): void {
+  term.println("");
+  term.println(title, "command");
+}
+
+function cmdProfile(term: Terminal): void {
+  printArrow(term, `${PROFILE.fullName} · updated ${PROFILE.updatedAt}`);
+  printSection(term, "about");
+  cmdAbout(term);
+  printSection(term, "skills");
+  cmdSkills(term);
+  printSection(term, "projects");
+  cmdProjects(term);
+  printSection(term, "experience");
+  cmdExperience(term);
+  printSection(term, "education");
+  cmdEducation(term);
+  printSection(term, "contact");
+  cmdContact(term);
 }
 
 function cmdTheme(ctx: Ctx, arg: string | undefined): void {
@@ -509,6 +497,9 @@ export async function runShellCommand(ctx: Ctx, input: string): Promise<void> {
     case "help":
       cmdHelp(term);
       break;
+    case "profile":
+      cmdProfile(term);
+      break;
     case "whoami":
       cmdWhoami(term);
       break;
@@ -523,6 +514,9 @@ export async function runShellCommand(ctx: Ctx, input: string): Promise<void> {
       break;
     case "experience":
       cmdExperience(term);
+      break;
+    case "education":
+      cmdEducation(term);
       break;
     case "contact":
       cmdContact(term);
