@@ -139,28 +139,39 @@ export class Terminal {
     this.scroll();
   }
 
-  // Stream text from an async generator into a single output line, drawing
-  // an optional colored prefix (e.g. "ai >"). Resolves when streaming ends.
+  // Stream text into a terminal response, then format its paragraphs and
+  // list items once the model finishes.
   async streamLine(
     gen: AsyncGenerator<string>,
     prefix?: { text: string; cls?: string },
   ): Promise<void> {
     const line = document.createElement("div");
-    line.className = "line";
+    line.className = "line streamed-response";
     if (prefix) {
       const p = document.createElement("span");
-      p.className = prefix.cls ?? "";
+      p.className = `streamed-response-prefix ${prefix.cls ?? ""}`.trim();
       p.textContent = prefix.text + " ";
       line.append(p);
     }
-    const body = document.createElement("span");
+    const body = document.createElement("div");
+    body.className = "streamed-response-body";
     line.append(body);
     this.outputEl.append(line);
     this.scroll();
 
-    for await (const chunk of gen) {
-      body.textContent += chunk;
+    let text = "";
+    try {
+      for await (const chunk of gen) {
+        text += chunk;
+        body.textContent = text;
+        this.scroll();
+      }
+      renderAssistantText(body, text);
       this.scroll();
+    } catch (err) {
+      // Avoid leaving an empty "ai >" row when a request fails before output.
+      if (!text) line.remove();
+      throw err;
     }
   }
 
@@ -192,7 +203,11 @@ export class Terminal {
     });
 
     this.inputEl.addEventListener("input", () => this.renderInput());
-    this.inputEl.addEventListener("keyup", () => this.renderInput());
+    this.inputEl.addEventListener("keyup", (e) => {
+      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+        this.renderInput();
+      }
+    });
     this.inputEl.addEventListener("click", () => this.renderInput());
     this.inputEl.addEventListener("keydown", (e) => this.onKeyDown(e));
   }
@@ -294,8 +309,76 @@ export class Terminal {
     const after = document.createTextNode(value.slice(pos + 1));
 
     this.renderEl.replaceChildren(before, cursor, after);
-    // Keep the (possibly multi-line, wrapping) input line in view as it grows.
-    this.scroll();
+  }
+}
+
+function renderAssistantText(container: HTMLElement, text: string): void {
+  const fragment = document.createDocumentFragment();
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  let paragraph: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    const node = document.createElement("div");
+    node.className = "ai-paragraph";
+    appendInlineText(node, paragraph.join(" "));
+    fragment.append(node);
+    paragraph = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
+    const heading = line.match(/^#{1,3}\s+(.+)$/);
+
+    if (bullet || numbered || heading) {
+      flushParagraph();
+      const node = document.createElement("div");
+      if (heading) {
+        node.className = "ai-heading";
+        appendInlineText(node, heading[1] ?? "");
+      } else {
+        node.className = "ai-list-item";
+        const marker = document.createElement("span");
+        marker.className = "accent ai-list-marker";
+        marker.textContent = numbered ? `${numbered[1]}.` : "·";
+        const content = document.createElement("span");
+        appendInlineText(content, (numbered?.[2] ?? bullet?.[1]) ?? "");
+        node.append(marker, content);
+      }
+      fragment.append(node);
+      continue;
+    }
+
+    paragraph.push(line);
+  }
+
+  flushParagraph();
+  container.replaceChildren(fragment);
+}
+
+function appendInlineText(container: HTMLElement, text: string): void {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith("**") && part.endsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = part.slice(2, -2);
+      container.append(strong);
+    } else if (part.startsWith("`") && part.endsWith("`")) {
+      const code = document.createElement("span");
+      code.className = "command";
+      code.textContent = part.slice(1, -1);
+      container.append(code);
+    } else {
+      container.append(document.createTextNode(part));
+    }
   }
 }
 

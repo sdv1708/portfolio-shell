@@ -2,7 +2,7 @@
 // and the LLM chat mode.
 
 import { Terminal } from "./terminal.ts";
-import { LLM } from "./llm.ts";
+import { LLM, WorkersAIRequestError } from "./llm.ts";
 import { themeNames } from "./themes.ts";
 import { PROFILE, type ProjectStatus } from "./profile.ts";
 
@@ -478,8 +478,21 @@ export async function runChatInput(ctx: Ctx, input: string): Promise<void> {
   try {
     await term.streamLine(llm.stream(input), { text: "ai >", cls: "ai" });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    term.println(`ai > error: ${msg}`, "dim");
+    if (err instanceof WorkersAIRequestError) {
+      const backend = llm.useCannedFallback();
+      ctx.updateBackendTag(backend.titleTag);
+      term.println(
+        `edge AI unavailable (${err.status}); switched to offline profile lookup.`,
+        "dim",
+      );
+      await term.streamLine(llm.stream(input), {
+        text: "offline >",
+        cls: "dim",
+      });
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      term.println(`ai > error: ${msg}`, "dim");
+    }
   } finally {
     term.setBusy(false);
   }

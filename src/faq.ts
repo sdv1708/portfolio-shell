@@ -18,8 +18,12 @@ const experienceSummary = PROFILE.experience
   .join("; ");
 
 const projectSummary = PROFILE.projects
-  .map((project) => `${project.name} [${project.status}]`)
-  .join("; ");
+  .filter((project) => project.status === "featured")
+  .map(
+    (project) =>
+      `- ${project.name} [${project.status}]: ${project.description}`,
+  )
+  .join("\n");
 
 const iqviaSummary = PROFILE.experience
   .filter((role) => role.company.includes("IQVIA"))
@@ -57,11 +61,14 @@ const ENTRIES: Entry[] = [
   },
   {
     keywords: [["skill"], ["stack"], ["tech"], ["languages"], ["tools"]],
-    answer: `Core stack: ${skillSummary}. Type 'skills' for the formatted list.`,
+    answer:
+      `Core stack: ${skillSummary}. For the formatted list, run /exit and then skills.`,
   },
   {
     keywords: [["project"], ["postmortem"], ["built"], ["work on"], ["clinical"], ["copilot"]],
-    answer: `Selected work: ${projectSummary} Type 'projects' for the formatted list.`,
+    answer:
+      `A few featured projects:\n\n${projectSummary}\n\n` +
+      "For the complete categorized list, run /exit and then projects.",
   },
   {
     keywords: [["iqvia"]],

@@ -26,6 +26,21 @@ const WEBLLM_CDN = "https://esm.run/@mlc-ai/web-llm";
 
 export type ProgressCallback = (text: string) => void;
 
+export class WorkersAIRequestError extends Error {
+  readonly status: number;
+
+  constructor(
+    status: number,
+    detail?: string,
+  ) {
+    super(
+      `Workers AI request failed (${status})${detail ? `: ${detail}` : ""}`,
+    );
+    this.name = "WorkersAIRequestError";
+    this.status = status;
+  }
+}
+
 const BACKENDS: Record<BackendKind, BackendInfo> = {
   "gemini-nano": {
     kind: "gemini-nano",
@@ -35,8 +50,8 @@ const BACKENDS: Record<BackendKind, BackendInfo> = {
   },
   "workers-ai": {
     kind: "workers-ai",
-    label: "ready. backend: Cloudflare Workers AI (Llama 3.1, edge)",
-    modelLabel: "Cloudflare Workers AI (Llama-3.1-8B-Instruct)",
+    label: "ready. backend: Cloudflare Workers AI (Llama 3.2, edge)",
+    modelLabel: "Cloudflare Workers AI (Llama-3.2-3B-Instruct)",
     titleTag: "workers ai",
   },
   webllm: {
@@ -73,6 +88,12 @@ export class LLM {
   private initialized = false;
 
   getBackend(): BackendInfo {
+    return this.backend;
+  }
+
+  useCannedFallback(): BackendInfo {
+    this.backend = BACKENDS.canned;
+    this.initialized = true;
     return this.backend;
   }
 
@@ -243,10 +264,11 @@ export class LLM {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: userText }),
     });
-    if (!res.ok || !res.body) {
-      // Network/edge failure — fall back to canned so the user still gets an answer.
-      yield* streamString(answerFromFaq(userText));
-      return;
+    if (!res.ok) {
+      throw new WorkersAIRequestError(res.status, await readWorkerError(res));
+    }
+    if (!res.body) {
+      throw new WorkersAIRequestError(res.status, "empty response stream");
     }
     yield* parseSSE(res.body);
   }
@@ -269,6 +291,17 @@ export class LLM {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+async function readWorkerError(response: Response): Promise<string | undefined> {
+  try {
+    const payload = (await response.json()) as { error?: unknown };
+    return typeof payload.error === "string"
+      ? payload.error.slice(0, 180)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // Stream a fixed string out word-by-word so canned answers feel typed.

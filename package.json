@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/*.test.mjs",
     "preview": "vite preview",
     "cf-dev": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy"

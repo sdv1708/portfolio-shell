@@ -86,9 +86,14 @@ export const PROFILE: Profile = {
       href: "mailto:sanjaydv@umd.edu",
     },
     {
+      label: "email (alt)",
+      value: "reach.sdv1708@gmail.com",
+      href: "mailto:reach.sdv1708@gmail.com",
+    },
+    {
       label: "linkedin",
-      value: "linkedin.com/in/sanjaydv",
-      href: "https://linkedin.com/in/sanjaydv",
+      value: "linkedin.com/in/sanjay-dv/",
+      href: "https://linkedin.com/in/sanjay-dv/",
     },
     {
       label: "github",

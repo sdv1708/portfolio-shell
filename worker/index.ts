@@ -9,9 +9,9 @@
 
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
 
-// Small, fast instruct model on Workers AI. Cheap enough for a portfolio's
-// free-tier Neuron allocation.
-const MODEL = "@cf/meta/llama-3.1-8b-instruct";
+// Small, active instruct model with enough context for the complete profile.
+// The previous Llama 3.1 8B model was retired by Cloudflare in May 2026.
+const MODEL = "@cf/meta/llama-3.2-3b-instruct";
 
 interface Env {
   // Static Assets binding (configured in wrangler.jsonc).

@@ -100,6 +100,7 @@ body {
 .terminal-root {
   flex: 1 1 auto;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
 }
 
@@ -214,6 +215,7 @@ body {
 .input-line {
   display: flex;
   align-items: baseline;
+  position: relative;
   white-space: pre;
 }
 
@@ -222,6 +224,8 @@ body {
 }
 
 .input-render {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -247,11 +251,56 @@ body {
 
 .hidden-input {
   position: absolute;
-  left: -9999px;
-  top: 0;
+  right: 0;
+  bottom: 0;
   opacity: 0;
   width: 1px;
   height: 1px;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+}
+
+/* ---- streamed AI responses ---- */
+
+.streamed-response {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 760px);
+  align-items: start;
+  column-gap: 8px;
+  margin: 2px 0 12px;
+}
+
+.streamed-response-prefix {
+  white-space: pre;
+}
+
+.streamed-response-body {
+  min-width: 0;
+  white-space: pre-wrap;
+}
+
+.ai-paragraph + .ai-paragraph,
+.ai-paragraph + .ai-list-item,
+.ai-list-item + .ai-paragraph {
+  margin-top: 8px;
+}
+
+.ai-heading {
+  color: var(--command);
+  font-weight: 700;
+  margin: 8px 0 2px;
+}
+
+.ai-list-item {
+  display: grid;
+  grid-template-columns: 1.25em minmax(0, 1fr);
+  gap: 0.25em;
+  margin-top: 4px;
+}
+
+.ai-list-marker {
+  text-align: right;
 }
 
 /* ---- CRT effect: scanlines + vignette ---- */
