@@ -23,6 +23,8 @@ export interface BackendInfo {
 
 const WEBLLM_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC"; // ~0.9GB
 const WEBLLM_CDN = "https://esm.run/@mlc-ai/web-llm";
+const PROBE_TIMEOUT_MS = 2000;
+const RESPONSE_TIMEOUT_MS = 25000;
 
 export type ProgressCallback = (text: string) => void;
 
@@ -62,7 +64,7 @@ const BACKENDS: Record<BackendKind, BackendInfo> = {
   },
   canned: {
     kind: "canned",
-    label: "offline Q&A mode (no model). try desktop Chrome for live AI.",
+    label: "Offline profile Q&A. The portfolio commands are still available.",
     modelLabel: "offline Q&A (no model)",
     titleTag: "offline",
   },
@@ -70,7 +72,10 @@ const BACKENDS: Record<BackendKind, BackendInfo> = {
 
 // Minimal structural typing for the experimental Chrome Prompt API.
 interface PromptSession {
-  promptStreaming(input: string): AsyncIterable<string> | ReadableStream<string>;
+  promptStreaming(
+    input: string,
+    options?: { signal: AbortSignal },
+  ): AsyncIterable<string> | ReadableStream<string>;
 }
 interface LanguageModelStatic {
   create(opts?: unknown): Promise<PromptSession>;
@@ -86,6 +91,7 @@ export class LLM {
   private geminiSession: PromptSession | null = null;
   private webllmEngine: any = null;
   private initialized = false;
+  private detection?: Promise<BackendInfo>;
 
   getBackend(): BackendInfo {
     return this.backend;
@@ -93,7 +99,8 @@ export class LLM {
 
   useCannedFallback(): BackendInfo {
     this.backend = BACKENDS.canned;
-    this.initialized = true;
+    this.initialized = false;
+    this.detection = undefined;
     return this.backend;
   }
 
@@ -106,13 +113,19 @@ export class LLM {
   }
 
   // Pick the best AUTOMATIC backend (never WebLLM).
-  async detect(): Promise<BackendInfo> {
+  detect(): Promise<BackendInfo> {
+    return this.detection ??= this.detectAutomaticBackend();
+  }
+
+  private async detectAutomaticBackend(): Promise<BackendInfo> {
     // 1. Chrome Prompt API (Gemini Nano)
     const lm = getLanguageModel();
     if (lm) {
       try {
-        const status = lm.availability ? await lm.availability() : "available";
-        if (status !== "unavailable") {
+        const status = lm.availability
+          ? await withDeadline(lm.availability(), PROBE_TIMEOUT_MS)
+          : "unavailable";
+        if (status === "available") {
           this.backend = BACKENDS["gemini-nano"];
           return this.backend;
         }
@@ -133,29 +146,37 @@ export class LLM {
   }
 
   private async probeWorkersAI(): Promise<boolean> {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 2000);
       const res = await fetch("/api/health", { signal: ctrl.signal });
-      clearTimeout(t);
       if (!res.ok) return false;
       const data = (await res.json()) as { ai?: boolean };
       return data.ai === true;
     } catch {
       return false;
+    } finally {
+      clearTimeout(t);
     }
   }
 
   // Lazily prepare the active automatic backend. Only Gemini Nano needs setup;
   // Workers AI and canned are stateless.
   async init(): Promise<void> {
+    await this.detect();
     if (this.initialized) return;
     if (this.backend.kind === "gemini-nano") {
-      const lm = getLanguageModel();
-      if (!lm) throw new Error("Prompt API unavailable");
-      this.geminiSession = await lm.create({
-        initialPrompts: [{ role: "system", content: SYSTEM_PROMPT }],
-      });
+      const controller = new AbortController();
+      try {
+        const lm = getLanguageModel();
+        if (!lm) throw new Error("Prompt API unavailable");
+        this.geminiSession = await withDeadline(lm.create({
+          initialPrompts: [{ role: "system", content: SYSTEM_PROMPT }],
+          signal: controller.signal,
+        }), 5000, () => controller.abort());
+      } catch {
+        this.backend = await this.probeWorkersAI() ? BACKENDS["workers-ai"] : BACKENDS.canned;
+      }
     }
     this.initialized = true;
   }
@@ -225,26 +246,50 @@ export class LLM {
   }
 
   // Stream a response, yielding incremental text deltas.
-  async *stream(userText: string): AsyncGenerator<string> {
-    switch (this.backend.kind) {
-      case "gemini-nano":
-        yield* this.streamGemini(userText);
-        return;
-      case "workers-ai":
-        yield* this.streamWorkersAI(userText);
-        return;
-      case "webllm":
-        yield* this.streamWebLLM(userText);
-        return;
-      case "canned":
-        yield* streamString(answerFromFaq(userText));
-        return;
+  async *stream(userText: string, signal?: AbortSignal): AsyncGenerator<string> {
+    signal?.throwIfAborted();
+    if (this.backend.kind === "canned") {
+      yield answerFromFaq(userText);
+      return;
+    }
+
+    const controller = new AbortController();
+    const cancel = () => controller.abort(signal?.reason);
+    const timer = setTimeout(() => {
+      controller.abort(new Error("The live response timed out."));
+    }, RESPONSE_TIMEOUT_MS);
+    signal?.addEventListener("abort", cancel, { once: true });
+
+    const source = this.liveStream(userText, controller.signal);
+    try {
+      let answered = false;
+      for await (const chunk of interruptible(source, controller.signal)) {
+        if (chunk.trim()) answered = true;
+        yield chunk;
+      }
+      if (!answered) throw new Error("The live model returned an empty answer.");
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
     }
   }
 
-  private async *streamGemini(userText: string): AsyncGenerator<string> {
+  private liveStream(userText: string, signal: AbortSignal): AsyncGenerator<string> {
+    switch (this.backend.kind) {
+      case "gemini-nano":
+        return this.streamGemini(userText, signal);
+      case "workers-ai":
+        return this.streamWorkersAI(userText, signal);
+      case "webllm":
+        return this.streamWebLLM(userText, signal);
+      case "canned":
+        throw new Error("No live AI is active.");
+    }
+  }
+
+  private async *streamGemini(userText: string, signal: AbortSignal): AsyncGenerator<string> {
     if (!this.geminiSession) throw new Error("session not initialized");
-    const out = this.geminiSession.promptStreaming(userText);
+    const out = this.geminiSession.promptStreaming(userText, { signal });
     let prev = "";
     for await (const chunk of asyncIterable(out)) {
       // The Prompt API has shipped both cumulative and delta streams; normalize.
@@ -258,39 +303,93 @@ export class LLM {
     }
   }
 
-  private async *streamWorkersAI(userText: string): AsyncGenerator<string> {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: userText }),
-    });
-    if (!res.ok) {
-      throw new WorkersAIRequestError(res.status, await readWorkerError(res));
+  private async *streamWorkersAI(userText: string, signal: AbortSignal): AsyncGenerator<string> {
+    let status = 0;
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: userText }),
+        signal,
+      });
+      status = res.status;
+      if (!res.ok) {
+        throw new WorkersAIRequestError(status, await readWorkerError(res));
+      }
+      if (!res.body || !res.headers.get("content-type")?.includes("text/event-stream")) {
+        throw new WorkersAIRequestError(status, "expected a response stream");
+      }
+      yield* parseSSE(res.body);
+    } catch (error) {
+      if (error instanceof WorkersAIRequestError || signal.aborted) throw error;
+      throw new WorkersAIRequestError(status, "connection interrupted");
     }
-    if (!res.body) {
-      throw new WorkersAIRequestError(res.status, "empty response stream");
-    }
-    yield* parseSSE(res.body);
   }
 
-  private async *streamWebLLM(userText: string): AsyncGenerator<string> {
+  private async *streamWebLLM(userText: string, signal: AbortSignal): AsyncGenerator<string> {
     if (!this.webllmEngine) throw new Error("engine not initialized");
-    const completion = await this.webllmEngine.chat.completions.create({
-      stream: true,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userText },
-      ],
-    });
-    for await (const chunk of completion) {
-      const delta = chunk?.choices?.[0]?.delta?.content ?? "";
-      if (delta) yield delta;
+    const stop = () => this.webllmEngine.interruptGenerate?.();
+    signal.addEventListener("abort", stop, { once: true });
+    try {
+      const completion = await this.webllmEngine.chat.completions.create({
+        stream: true,
+        max_tokens: 320,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userText },
+        ],
+      });
+      for await (const chunk of completion) {
+        signal.throwIfAborted();
+        const delta = chunk?.choices?.[0]?.delta?.content ?? "";
+        if (delta) yield delta;
+      }
+    } finally {
+      signal.removeEventListener("abort", stop);
     }
   }
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+async function withDeadline<T>(pending: Promise<T>, ms: number, stop?: () => void): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      stop?.();
+      reject(new Error("AI setup timed out."));
+    }, ms);
+  });
+  try {
+    return await Promise.race([pending, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function* interruptible(
+  source: AsyncGenerator<string>,
+  signal: AbortSignal,
+): AsyncGenerator<string> {
+  let abort!: () => void;
+  const stopped = new Promise<never>((_, reject) => {
+    abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+  });
+  try {
+    while (true) {
+      signal.throwIfAborted();
+      const next = await Promise.race([source.next(), stopped]);
+      if (next.done) return;
+      yield next.value;
+    }
+  } finally {
+    signal.removeEventListener("abort", abort);
+    // Providers may finish winding down after the UI has already recovered.
+    void source.return(undefined).catch(() => {});
+  }
 }
 
 async function readWorkerError(response: Response): Promise<string | undefined> {
@@ -304,38 +403,34 @@ async function readWorkerError(response: Response): Promise<string | undefined> 
   }
 }
 
-// Stream a fixed string out word-by-word so canned answers feel typed.
-async function* streamString(text: string): AsyncGenerator<string> {
-  const tokens = text.split(/(\s+)/);
-  for (const tok of tokens) {
-    yield tok;
-    await sleep(12);
-  }
-}
-
 // Parse a Workers AI text/event-stream body into text deltas.
 async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (payload === "[DONE]") return;
-      try {
-        const json = JSON.parse(payload) as { response?: string };
-        if (json.response) yield json.response;
-      } catch {
-        /* ignore keep-alive / partial frames */
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = done ? "" : lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") return;
+        try {
+          const json = JSON.parse(payload) as { response?: unknown };
+          if (typeof json.response === "string") yield json.response;
+        } catch {
+          /* Ignore malformed events. A wholly empty stream triggers fallback. */
+        }
       }
+      if (done) return;
     }
+  } finally {
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
 }
 

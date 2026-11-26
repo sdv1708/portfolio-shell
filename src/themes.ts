@@ -35,7 +35,7 @@ export const THEMES: Record<string, Theme> = {
     ok: "#6272a4",
     accent: "#50fa7b",
     ai: "#8be9fd",
-    dim: "#6272a4",
+    dim: "#a2afd5",
   },
   matrix: {
     name: "matrix",
@@ -46,15 +46,19 @@ export const THEMES: Record<string, Theme> = {
     ok: "#008f11",
     accent: "#00ff41",
     ai: "#39ff14",
-    dim: "#008f11",
+    dim: "#56ba65",
   },
 };
 
 export const DEFAULT_THEME = "espresso";
 
+export function isThemeName(name: string): boolean {
+  return Object.hasOwn(THEMES, name);
+}
+
 export function applyTheme(name: string): boolean {
+  if (!isThemeName(name)) return false;
   const theme = THEMES[name];
-  if (!theme) return false;
   const root = document.documentElement;
   root.style.setProperty("--bg", theme.bg);
   root.style.setProperty("--text", theme.text);

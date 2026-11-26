@@ -1,8 +1,7 @@
 // Custom div-based terminal emulator. No xterm.js.
 //
-// Mechanics only: rendering, input handling, command history, tab
-// completion, and a manually drawn blinking cursor. Command behavior and
-// content live in commands.ts; the LLM lives in llm.ts.
+// Rendering, native input, command history, and tab completion. Command
+// behavior and content live in commands.ts, and the LLM lives in llm.ts.
 
 export type Mode = "shell" | "chat";
 
@@ -12,12 +11,11 @@ export interface TerminalOptions {
 }
 
 export class Terminal {
-  private root: HTMLElement;
   private outputEl: HTMLElement;
-  private inputLineEl: HTMLElement;
   private promptEl: HTMLElement;
-  private renderEl: HTMLElement;
   private inputEl: HTMLInputElement;
+  private submitButton: HTMLButtonElement;
+  private stopButton: HTMLButtonElement;
 
   private history: string[] = [];
   private histIdx = 0; // points one past the last entry when not browsing
@@ -26,33 +24,31 @@ export class Terminal {
   public mode: Mode = "shell";
   private promptText = "$";
   private busy = false;
+  private stopReply?: () => void;
 
   // Tab-completion candidates for the current mode.
   private completions: string[] = [];
+  private themeCompletions: string[] = [];
 
   // Set by the command router (main.ts).
   public onLine: (input: string) => void | Promise<void> = () => {};
 
   constructor(private readonly opts: TerminalOptions) {
-    this.root = opts.root;
-    this.root.classList.add("terminal");
-
     this.outputEl = document.createElement("div");
     this.outputEl.className = "output";
+    this.outputEl.setAttribute("role", "region");
+    this.outputEl.setAttribute("aria-label", "Terminal output");
+    this.outputEl.tabIndex = 0;
 
-    this.inputLineEl = document.createElement("div");
-    this.inputLineEl.className = "input-line";
+    const form = document.createElement("form");
+    form.className = "input-line";
 
     this.promptEl = document.createElement("span");
     this.promptEl.className = "prompt";
+    this.promptEl.setAttribute("aria-hidden", "true");
 
-    this.renderEl = document.createElement("span");
-    this.renderEl.className = "input-render";
-
-    // Real input element captures keystrokes but is visually hidden; the
-    // visible text + block cursor are drawn manually in renderEl.
     this.inputEl = document.createElement("input");
-    this.inputEl.className = "hidden-input";
+    this.inputEl.className = "terminal-input";
     this.inputEl.type = "text";
     this.inputEl.setAttribute("aria-label", "Terminal input");
     this.inputEl.autocomplete = "off";
@@ -60,12 +56,35 @@ export class Terminal {
     this.inputEl.setAttribute("autocapitalize", "off");
     this.inputEl.setAttribute("autocorrect", "off");
 
-    this.inputLineEl.append(this.promptEl, this.renderEl, this.inputEl);
-    this.root.append(this.outputEl, this.inputLineEl);
+    this.submitButton = document.createElement("button");
+    this.submitButton.type = "submit";
+
+    this.stopButton = document.createElement("button");
+    this.stopButton.type = "button";
+    this.stopButton.textContent = "Stop";
+    this.stopButton.hidden = true;
+    this.stopButton.addEventListener("click", () => this.stopReply?.());
+
+    form.append(this.promptEl, this.inputEl, this.submitButton, this.stopButton);
+    opts.root.append(this.outputEl, form);
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (this.busy) return;
+      const input = this.inputEl.value.trim();
+      if (!input) return;
+      this.inputEl.value = "";
+      void this.submit(input);
+    });
 
     this.setPrompt("$");
-    this.bindEvents();
-    this.renderInput();
+    this.inputEl.addEventListener("keydown", (event) => this.onKeyDown(event));
+    form.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !event.isComposing && this.stopReply) {
+        event.preventDefault();
+        this.stopReply();
+      }
+    });
   }
 
   // ---- public API -------------------------------------------------------
@@ -73,21 +92,34 @@ export class Terminal {
   setPrompt(text: string): void {
     this.promptText = text;
     this.promptEl.textContent = text;
+    this.inputEl.enterKeyHint = this.mode === "chat" ? "send" : "go";
+    this.inputEl.placeholder = this.mode === "chat" ? "Ask about my work" : "Type a command";
+    this.updateInputControls();
   }
 
-  setPlaceholder(text: string): void {
-    this.inputEl.placeholder = text;
-  }
-
-  setCompletions(words: string[]): void {
+  setCompletions(words: string[], themes: string[] = []): void {
     this.completions = words;
+    this.themeCompletions = themes;
   }
 
-  setBusy(busy: boolean): void {
+  setBusy(busy: boolean, stop?: () => void): void {
+    const focused = document.activeElement;
     this.busy = busy;
-    this.inputLineEl.style.visibility = busy ? "hidden" : "visible";
+    this.stopReply = stop;
+    this.updateInputControls();
     this.opts.onBusyChange?.(busy);
-    if (!busy) this.focus();
+    if (busy && stop && focused === this.submitButton) this.stopButton.focus();
+    if (!busy && focused === this.stopButton) this.focus();
+  }
+
+  private updateInputControls(): void {
+    this.inputEl.readOnly = this.busy;
+    this.submitButton.disabled = this.busy;
+    this.submitButton.hidden = this.busy && !!this.stopReply;
+    this.submitButton.textContent = this.busy
+      ? "Working…"
+      : this.mode === "chat" ? "Send" : "Run";
+    this.stopButton.hidden = !this.busy || !this.stopReply;
   }
 
   async submit(input: string): Promise<void> {
@@ -95,7 +127,7 @@ export class Terminal {
   }
 
   focus(): void {
-    this.inputEl.focus();
+    this.inputEl.focus({ preventScroll: true });
   }
 
   getHistory(): string[] {
@@ -118,8 +150,15 @@ export class Terminal {
 
   // Append a pre-built element (used for multi-segment colored output).
   printNode(node: Node): void {
+    const previous = this.outputEl.lastElementChild;
     this.outputEl.append(node);
-    this.scroll();
+    const first = previous ? previous.nextElementSibling : this.outputEl.firstElementChild;
+    if (first instanceof HTMLElement &&
+        this.outputEl.scrollHeight - first.offsetTop > this.outputEl.clientHeight) {
+      this.outputEl.scrollTop = first.offsetTop;
+    } else {
+      this.scroll();
+    }
   }
 
   // Append a block of preformatted text (preserves alignment / newlines).
@@ -169,15 +208,17 @@ export class Terminal {
     let text = "";
     try {
       for await (const chunk of gen) {
+        const remaining = this.outputEl.scrollHeight -
+          this.outputEl.clientHeight - this.outputEl.scrollTop;
         text += chunk;
         body.textContent = text;
-        this.scroll();
+        if (remaining < 40) this.scroll();
       }
       renderAssistantText(body, text);
-      this.scroll();
     } catch (err) {
       // Avoid leaving an empty "ai >" row when a request fails before output.
       if (!text) line.remove();
+      else renderAssistantText(body, text);
       throw err;
     }
   }
@@ -193,42 +234,12 @@ export class Terminal {
   // ---- internals --------------------------------------------------------
 
   private scroll(): void {
-    this.root.scrollTop = this.root.scrollHeight;
+    this.outputEl.scrollTop = this.outputEl.scrollHeight;
   }
 
-  private bindEvents(): void {
-    // Focus the input on a plain click, but never steal focus mid-selection.
-    // Using `click` (fires on mouseup, after a drag completes) and bailing when
-    // text is selected lets users select and copy output normally — focusing
-    // on `mousedown` used to collapse the selection as it formed.
-    this.root.addEventListener("click", (e) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "A") return; // allow link clicks
-      const sel = window.getSelection();
-      if (sel && sel.toString().length > 0) return; // a selection exists — leave it
-      this.focus();
-    });
-
-    this.inputEl.addEventListener("input", () => this.renderInput());
-    this.inputEl.addEventListener("keyup", (e) => {
-      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
-        this.renderInput();
-      }
-    });
-    this.inputEl.addEventListener("click", () => this.renderInput());
-    this.inputEl.addEventListener("keydown", (e) => this.onKeyDown(e));
-  }
-
-  private async onKeyDown(e: KeyboardEvent): Promise<void> {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (this.busy) return;
-      const value = this.inputEl.value;
-      this.inputEl.value = "";
-      this.renderInput();
-      await this.submit(value);
-      return;
-    }
+  private onKeyDown(e: KeyboardEvent): void {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (this.busy) return;
 
     if (e.key === "Tab" && !e.shiftKey && this.complete()) {
       e.preventDefault();
@@ -261,61 +272,42 @@ export class Terminal {
       this.histIdx = this.history.length;
       this.inputEl.value = this.draft;
       this.moveCaretToEnd();
-      this.renderInput();
       return;
     } else {
       this.histIdx = next;
     }
     this.inputEl.value = this.history[this.histIdx] ?? "";
     this.moveCaretToEnd();
-    this.renderInput();
   }
 
   private complete(): boolean {
-    const value = this.inputEl.value;
-    // Only complete the first token (the command name).
-    if (value.includes(" ")) return false;
-    const prefix = value.toLowerCase();
+    const value = this.inputEl.value.trimStart().toLowerCase();
+    const theme = /^\/?theme\s+(\S*)$/.exec(value);
+    if (!theme && value.includes(" ")) return false;
+    const prefix = theme ? theme[1] : value;
     if (!prefix) return false;
-    const matches = this.completions.filter((c) => c.startsWith(prefix));
+    const candidates = theme ? this.themeCompletions : this.completions;
+    const matches = candidates.filter((c) => c.startsWith(prefix));
+    const command = theme ? value.slice(0, value.length - prefix.length) : "";
     if (matches.length === 1) {
-      this.inputEl.value = matches[0];
+      if (matches[0] === prefix) return false;
+      this.inputEl.value = command + matches[0];
       this.moveCaretToEnd();
-      this.renderInput();
     } else if (matches.length > 1) {
       // Complete the longest common prefix, then show options.
       const lcp = longestCommonPrefix(matches);
       if (lcp.length > value.length) {
-        this.inputEl.value = lcp;
+        this.inputEl.value = command + lcp;
         this.moveCaretToEnd();
       }
-      this.echo(value);
       this.println(matches.join("    "), "dim");
-      this.renderInput();
     }
     return matches.length > 0;
   }
 
   private moveCaretToEnd(): void {
     const len = this.inputEl.value.length;
-    // Defer so it applies after the value assignment settles.
-    requestAnimationFrame(() => this.inputEl.setSelectionRange(len, len));
-  }
-
-  // Redraw the visible input line (typed text + block cursor) from the
-  // hidden input's value and caret position.
-  private renderInput(): void {
-    const value = this.inputEl.value;
-    const pos = this.inputEl.selectionStart ?? value.length;
-
-    const before = document.createTextNode(value.slice(0, pos));
-    const cursorChar = value[pos] ?? " ";
-    const cursor = document.createElement("span");
-    cursor.className = "cursor";
-    cursor.textContent = cursorChar;
-    const after = document.createTextNode(value.slice(pos + 1));
-
-    this.renderEl.replaceChildren(before, cursor, after);
+    this.inputEl.setSelectionRange(len, len);
   }
 }
 

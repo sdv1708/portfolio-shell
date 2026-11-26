@@ -90,9 +90,12 @@ contact · theme · history · clear · exit · help`
 Update public profile facts in `src/profile.ts`. The terminal views, offline
 Q&A, and all LLM backends consume that same record.
 
-Themes: `espresso` (default), `dracula`, `matrix` — switch with `theme [name]`.
+Choose a command from the toolbar or type it into the prompt. On a phone the
+toolbar wraps and the prompt has a visible Run or Send button.
 
-Type `ask` to chat. In chat mode: `/exit · /clear · /model · /help`, plus
-`/local` (opt-in in-browser model) where WebGPU is available.
+Use `theme` to open the theme picker. You can also type a name such as
+`dracula`, or use `theme dracula`.
 
-> Mobile viewports (`< 768px`) show a desktop-only notice.
+Type `ask` to chat. In chat mode: `/exit · /clear · /model · /theme · /help`,
+plus `/local` where WebGPU is available. Use **Stop** or Escape to cancel a
+reply. If live AI is unavailable, chat answers from the offline profile.

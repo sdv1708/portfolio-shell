@@ -1,9 +1,9 @@
 // Command handlers and static portfolio content for both the normal shell
 // and the LLM chat mode.
 
-import { Terminal } from "./terminal.ts";
-import { LLM, WorkersAIRequestError } from "./llm.ts";
-import { themeNames } from "./themes.ts";
+import type { Terminal } from "./terminal.ts";
+import type { LLM } from "./llm.ts";
+import { isThemeName, themeNames } from "./themes.ts";
 import { PROFILE, type ProjectStatus } from "./profile.ts";
 import { isWorkHistoryQuestion } from "./faq.ts";
 
@@ -34,7 +34,7 @@ export const SHELL_COMMANDS = [
 ];
 
 export function chatCommands(llm: LLM): string[] {
-  const commands = ["/exit", "/clear", "/model", "/help"];
+  const commands = ["/exit", "/clear", "/model", "/theme", "/help"];
   if (llm.canOfferWebLLM()) commands.push("/local");
   return commands;
 }
@@ -113,10 +113,10 @@ function cmdHelp(term: Terminal): void {
     ["experience", "selected roles"],
     ["education", "degrees"],
     ["contact", "contact info"],
-    ["theme", "switch theme"],
+    ["theme", "choose a theme, or type theme <name>"],
     ["history", "show history"],
     ["clear", "clear screen"],
-    ["exit", "leave"],
+    ["exit", "show how to leave the portfolio"],
   ];
   const frag = document.createDocumentFragment();
   for (const [name, desc] of rows) {
@@ -340,17 +340,29 @@ function cmdProfile(term: Terminal): void {
 
 function cmdTheme(ctx: Ctx, arg: string | undefined): void {
   const { term } = ctx;
-  if (!arg) {
-    term.println("available themes:");
-    for (const name of themeNames()) {
-      term.println("  " + name);
-    }
+  const name = arg?.toLowerCase();
+  if (name && ctx.applyThemeAndTitle(name)) {
+    term.println(`Theme set to ${name}.`, "dim");
     return;
   }
-  const ok = ctx.applyThemeAndTitle(arg);
-  if (!ok) {
-    term.println(`unknown theme: ${arg}`);
+
+  const choices = document.createElement("div");
+  choices.className = "theme-choices";
+  choices.setAttribute("role", "group");
+  choices.setAttribute("aria-label", "Available themes");
+  const instruction = document.createElement("div");
+  instruction.textContent = name
+    ? `Unknown theme "${arg}". Choose one below or type theme <name>.`
+    : "Choose a theme or type its name.";
+  choices.append(instruction);
+  for (const theme of themeNames()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = theme;
+    button.addEventListener("click", () => void term.submit(theme));
+    choices.append(button);
   }
+  term.printNode(choices);
 }
 
 function cmdHistory(term: Terminal): void {
@@ -393,13 +405,11 @@ export async function enterChat(ctx: Ctx): Promise<void> {
   term.setBusy(true);
   try {
     await llm.init();
-  } catch (err) {
+  } catch {
+    llm.useCannedFallback();
+  } finally {
     term.setBusy(false);
-    const msg = err instanceof Error ? err.message : String(err);
-    term.println(msg);
-    return;
   }
-  term.setBusy(false);
 
   printArrow(term, llm.getBackend().label);
   ctx.updateBackendTag(llm.getBackend().titleTag);
@@ -409,14 +419,12 @@ export async function enterChat(ctx: Ctx): Promise<void> {
   // Switch into chat mode.
   term.mode = "chat";
   term.setPrompt("dv-chat>");
-  term.setPlaceholder("ask something about DV...");
 }
 
 function exitChat(ctx: Ctx): void {
   const { term } = ctx;
   term.mode = "shell";
   term.setPrompt("$");
-  term.setPlaceholder("");
 }
 
 // Opt-in download of a fully-local in-browser model.
@@ -468,11 +476,16 @@ export async function runChatInput(ctx: Ctx, input: string): Promise<void> {
   // Treat the chat commands as commands whether or not they're prefixed with
   // a slash — typing `exit` or `clear` (no slash) is a common reflex, and
   // silently sending those to the LLM is surprising.
-  const parts = input.split(/\s+/);
+  const parts = input.trim().split(/\s+/);
   const word = (parts[0] ?? "").toLowerCase();
   const cmd = word.replace(/^\//, "");
+  const themeCommand = cmd === "theme" && (word.startsWith("/") || parts.length <= 2);
+  if (themeCommand || (parts.length === 1 && isThemeName(cmd))) {
+    cmdTheme(ctx, cmd === "theme" ? parts[1] : cmd);
+    return;
+  }
   const KNOWN = new Set(["exit", "quit", "clear", "model", "local", "help"]);
-  if (KNOWN.has(cmd)) {
+  if (KNOWN.has(cmd) && (word.startsWith("/") || parts.length === 1 || cmd === "local")) {
     if (cmd === "exit" || cmd === "quit") {
       exitChat(ctx);
     } else if (cmd === "clear") {
@@ -496,17 +509,17 @@ export async function runChatInput(ctx: Ctx, input: string): Promise<void> {
     return;
   }
 
-  term.setBusy(true);
+  const reply = new AbortController();
+  term.setBusy(true, () => reply.abort());
   try {
-    await term.streamLine(llm.stream(input), { text: "ai >", cls: "ai" });
+    await term.streamLine(llm.stream(input, reply.signal), { text: "ai >", cls: "ai" });
   } catch (err) {
-    if (err instanceof WorkersAIRequestError) {
+    if (reply.signal.aborted) {
+      term.println("Response stopped.", "dim");
+    } else if (llm.getBackend().kind !== "canned") {
       const backend = llm.useCannedFallback();
       ctx.updateBackendTag(backend.titleTag);
-      term.println(
-        `edge AI unavailable (${err.status}); switched to offline profile lookup.`,
-        "dim",
-      );
+      term.println("Live AI is unavailable. Showing an offline profile answer.", "dim");
       await term.streamLine(llm.stream(input), {
         text: "offline >",
         cls: "dim",
@@ -524,9 +537,14 @@ export async function runChatInput(ctx: Ctx, input: string): Promise<void> {
 
 export async function runShellCommand(ctx: Ctx, input: string): Promise<void> {
   const { term } = ctx;
-  const parts = input.split(/\s+/);
+  const parts = input.trim().split(/\s+/);
   const cmd = (parts[0] ?? "").toLowerCase();
   const arg = parts[1];
+
+  if (parts.length === 1 && isThemeName(cmd)) {
+    cmdTheme(ctx, cmd);
+    return;
+  }
 
   switch (cmd) {
     case "help":
@@ -566,12 +584,12 @@ export async function runShellCommand(ctx: Ctx, input: string): Promise<void> {
       term.clear();
       break;
     case "exit":
-      term.println("you can't leave. there's no door.");
+      term.println("Close this tab to leave the portfolio.");
       break;
     case "ask":
       await enterChat(ctx);
       break;
     default:
-      term.println(`command not found: ${input}. type 'help' for available commands.`);
+      term.println(`Command not found: ${input}. Choose a command above or type help.`);
   }
 }

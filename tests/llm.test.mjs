@@ -47,6 +47,115 @@ test("Workers AI HTTP errors are not disguised as generated answers", async () =
   }
 });
 
+test("detection does not select an on-device model that requires a download", async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  globalThis.window = {
+    LanguageModel: { availability: async () => "downloadable" },
+  };
+  globalThis.fetch = async () => Response.json({ ai: true });
+  try {
+    assert.equal((await new LLM().detect()).kind, "workers-ai");
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Workers AI distinguishes an interrupted connection from a valid answer", async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  globalThis.window = {};
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/api/health")) return Response.json({ ai: true });
+    throw new TypeError("Failed to fetch");
+  };
+  try {
+    const llm = new LLM();
+    await llm.detect();
+    await assert.rejects(async () => {
+      for await (const _chunk of llm.stream("what are some projects?")) {
+        // Drain the stream so an asynchronous connection failure is observed.
+      }
+    }, { name: "WorkersAIRequestError" });
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a local model that cannot open hands chat over to the edge", async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  globalThis.window = {
+    LanguageModel: {
+      availability: async () => "available",
+      create: async () => { throw new Error("Session unavailable"); },
+    },
+  };
+  globalThis.fetch = async () => Response.json({ ai: true });
+  try {
+    const llm = new LLM();
+    assert.equal((await llm.detect()).kind, "gemini-nano");
+    await llm.init();
+    assert.equal(llm.getBackend().kind, "workers-ai");
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an empty or interrupted reply does not leave chat waiting", async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  globalThis.window = {};
+  try {
+    const llm = new LLM();
+    globalThis.fetch = async (input) => String(input).endsWith("/api/health")
+      ? Response.json({ ai: true })
+      : new Response("data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+    await llm.detect();
+    await assert.rejects(llm.stream("what did he build?").next(), /empty answer/);
+
+    globalThis.fetch = async () => new Promise(() => {});
+    const controller = new AbortController();
+    const pending = llm.stream("what did he build?", controller.signal).next();
+    controller.abort();
+    await assert.rejects(pending, { name: "AbortError" });
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Workers AI preserves a response frame split across network chunks", async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  globalThis.window = {};
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/api/health")) return Response.json({ ai: true });
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"resp'));
+        controller.enqueue(encoder.encode('onse":"Hi"}'));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+  };
+  try {
+    const llm = new LLM();
+    await llm.detect();
+    let answer = "";
+    for await (const chunk of llm.stream("say hi")) answer += chunk;
+    assert.equal(answer, "Hi");
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("offline project answers use the terminal list format", () => {
   const answer = answerFromFaq("what are some of his projects?");
 

@@ -1,11 +1,11 @@
-// Entry point: mobile gate, title bar, boot sequence, async LLM detection,
-// and the command router wiring the terminal to the command handlers.
+// Entry point for the terminal, command bar, and background AI detection.
 
 import "./style.css";
 import { Terminal } from "./terminal.ts";
 import { LLM } from "./llm.ts";
-import { applyTheme, DEFAULT_THEME } from "./themes.ts";
+import { applyTheme, DEFAULT_THEME, themeNames } from "./themes.ts";
 import { DV_ASCII } from "./ascii.ts";
+import { PROFILE } from "./profile.ts";
 import {
   Ctx,
   SHELL_COMMANDS,
@@ -14,29 +14,7 @@ import {
   runChatInput,
 } from "./commands.ts";
 
-const MOBILE_BREAKPOINT = 768;
 const app = document.getElementById("app")!;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function renderMobile(): void {
-  app.innerHTML = "";
-  const wrap = document.createElement("div");
-  wrap.className = "mobile";
-  const a = document.createElement("div");
-  a.className = "mobile-prompt";
-  a.textContent = "sdv@dev:~$";
-  const b = document.createElement("div");
-  b.className = "mobile-msg";
-  b.textContent =
-    "best experienced on desktop Chrome.\non-device AI requires a real GPU.";
-  wrap.append(a, b);
-  app.append(wrap);
-}
-
-// ---- desktop ----
 
 let titleThemeEl: HTMLElement;
 let titleBackendEl: HTMLElement;
@@ -67,7 +45,7 @@ function buildChrome(): {
   title.append(document.createTextNode("sdv@dev — "));
   titleBackendEl = document.createElement("span");
   titleBackendEl.className = "title-backend";
-  titleBackendEl.textContent = "ai";
+  titleBackendEl.textContent = "checking AI";
   title.append(titleBackendEl, document.createTextNode(" — "));
   titleThemeEl = document.createElement("span");
   titleThemeEl.className = "title-theme";
@@ -96,74 +74,7 @@ function setTitleBackend(tag: string): void {
   if (titleBackendEl) titleBackendEl.textContent = tag;
 }
 
-function printOk(term: Terminal, text: string): HTMLElement {
-  const line = document.createElement("div");
-  line.className = "line";
-  const ok = document.createElement("span");
-  ok.className = "ok";
-  ok.textContent = "[ok] ";
-  line.append(ok, document.createTextNode(text));
-  term.printNode(line);
-  return line;
-}
-
-async function boot(term: Terminal, llm: LLM): Promise<void> {
-  // Kick off detection immediately; it resolves asynchronously while the
-  // staggered boot lines print.
-  const detection = llm.detect();
-
-  printOk(term, "mounting /dev/curiosity");
-  await sleep(350);
-  printOk(term, "loading backend systems...");
-  await sleep(350);
-  const checking = printOk(term, "checking for on-device LLM...");
-  await sleep(350);
-  printOk(term, "warming up the postmortem engine");
-  await sleep(350);
-  printOk(term, "system ready");
-  await sleep(350);
-
-  // Insert the LLM status directly beneath the "checking..." line.
-  const backend = await detection;
-  const status = document.createElement("div");
-  status.className = "line";
-  const arrow = document.createElement("span");
-  arrow.className = "accent";
-  arrow.textContent = "→ ";
-  status.append(arrow, document.createTextNode(backend.label));
-  checking.after(status);
-  setTitleBackend(backend.titleTag);
-
-  await sleep(200);
-
-  // Banner + welcome.
-  term.printBlock(DV_ASCII, "ascii");
-  term.println("");
-  term.println("Choose a command above or type one here.");
-  term.println("");
-}
-
 function main(): void {
-  if (window.innerWidth < MOBILE_BREAKPOINT) {
-    renderMobile();
-    // If the viewport grows past the breakpoint, build the real terminal.
-    window.addEventListener("resize", onResizeFromMobile);
-    return;
-  }
-  startTerminal();
-}
-
-let started = false;
-
-function onResizeFromMobile(): void {
-  if (!started && window.innerWidth >= MOBILE_BREAKPOINT) {
-    window.removeEventListener("resize", onResizeFromMobile);
-    startTerminal();
-  }
-}
-
-function startTerminal(): void {
-  started = true;
   applyTheme(DEFAULT_THEME);
 
   const { commandBar, commands, root } = buildChrome();
@@ -177,6 +88,7 @@ function startTerminal(): void {
   });
 
   const llm = new LLM();
+  const desktopPointer = window.matchMedia("(pointer: fine)");
 
   const ctx: Ctx = {
     term,
@@ -209,31 +121,42 @@ function startTerminal(): void {
       return button;
     });
     commands.replaceChildren(...buttons);
-    term.setCompletions(shortcuts);
-    if (document.activeElement === document.body) term.focus();
+    term.setCompletions([...shortcuts, ...themeNames()], themeNames());
   }
 
   updateCommandBar();
 
   term.onLine = async (raw: string) => {
-    const input = raw;
-    if (input.trim() === "") return;
+    const input = raw.trim();
+    if (!input) return;
+    const mode = term.mode;
     term.echo(input);
     term.recordHistory(input);
-    if (term.mode === "shell") {
-      await runShellCommand(ctx, input.trim());
-    } else {
-      await runChatInput(ctx, input.trim());
+    try {
+      if (mode === "shell") await runShellCommand(ctx, input);
+      else await runChatInput(ctx, input);
+    } catch {
+      term.println("That command couldn’t run. Try again or choose another command.", "dim");
+    } finally {
+      updateCommandBar();
+      if (mode !== term.mode && desktopPointer.matches) {
+        term.focus();
+      }
     }
-    updateCommandBar();
   };
 
-  // Hide the input line until boot finishes, then hand control to the user.
-  term.setBusy(true);
-  boot(term, llm).then(() => {
-    term.setBusy(false);
-    term.focus();
-  });
+  const banner = term.printBlock(DV_ASCII, "ascii");
+  banner.setAttribute("aria-hidden", "true");
+  const heading = document.createElement("h1");
+  heading.className = "intro-name";
+  heading.textContent = PROFILE.fullName;
+  term.printNode(heading);
+  term.println("Choose a command above or type one below.");
+  if (desktopPointer.matches) term.focus();
+  void llm.detect().then(
+    (backend) => setTitleBackend(backend.titleTag),
+    () => setTitleBackend(llm.useCannedFallback().titleTag),
+  );
 }
 
 main();

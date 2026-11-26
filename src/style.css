@@ -33,8 +33,7 @@ body {
 }
 
 #app {
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
 }
 
 /* ---- window + macOS-style title bar ---- */
@@ -43,7 +42,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: 100vw;
+  height: 100dvh;
+  width: 100%;
 }
 
 .titlebar {
@@ -59,6 +59,7 @@ body {
 
 .dots {
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
 }
 
@@ -112,9 +113,11 @@ body {
   border: 0;
 }
 
-.command-bar button {
-  min-height: 26px;
-  padding: 2px 7px;
+.command-bar button,
+.theme-choices button,
+.input-line button {
+  min-height: 32px;
+  padding: 3px 9px;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 4px;
@@ -124,17 +127,24 @@ body {
   font-size: 12px;
 }
 
-.command-bar button:enabled:hover {
+.command-bar button:enabled:hover,
+.theme-choices button:hover,
+.input-line button:enabled:hover {
   border-color: var(--command);
   color: var(--command);
 }
 
-.command-bar button:focus-visible {
+.command-bar button:focus-visible,
+.theme-choices button:focus-visible,
+.input-line button:focus-visible,
+.terminal-input:focus-visible,
+.output:focus-visible {
   outline: 2px solid var(--command);
   outline-offset: 2px;
 }
 
-.command-bar button:disabled {
+.command-bar button:disabled,
+.input-line button:disabled {
   color: var(--dim);
   cursor: wait;
 }
@@ -144,18 +154,20 @@ body {
 .terminal-root {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Output is freely selectable / copyable. */
 .output {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding: 16px 18px 8px;
+  outline-offset: -3px;
   user-select: text;
-}
-
-.terminal {
-  padding: 16px 18px 44px;
 }
 
 .output .line,
@@ -164,15 +176,17 @@ body {
   word-break: break-word;
 }
 
-.output .block {
-  white-space: pre-wrap;
-}
-
-.ascii {
+.output .ascii {
   color: var(--command);
   line-height: 1.1;
   white-space: pre;
   overflow-x: auto;
+}
+
+.intro-name {
+  margin: 12px 0 6px;
+  color: var(--command);
+  font-size: 1.25rem;
 }
 
 .command {
@@ -254,6 +268,17 @@ body {
   text-decoration: underline;
 }
 
+.theme-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+
+.theme-choices div {
+  flex-basis: 100%;
+}
+
 .experience-entry {
   margin-bottom: 24px;
   padding-left: 12px;
@@ -292,51 +317,36 @@ body {
 
 .input-line {
   display: flex;
-  align-items: baseline;
-  position: relative;
-  white-space: pre;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .input-line .prompt {
-  margin-right: 8px;
+  flex: 0 0 auto;
 }
 
-.input-render {
+.terminal-input {
   flex: 1 1 auto;
   min-width: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  color: var(--text);
+  caret-color: var(--prompt);
+  font: inherit;
 }
 
-.cursor {
-  background: var(--text);
-  color: var(--bg);
-  animation: blink 1s step-end infinite;
+.terminal-input::placeholder {
+  color: var(--dim);
 }
 
-@keyframes blink {
-  0%,
-  50% {
-    background: var(--text);
-    color: var(--bg);
-  }
-  50.01%,
-  100% {
-    background: transparent;
-    color: var(--text);
-  }
-}
-
-.hidden-input {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
-  pointer-events: none;
+.input-line button {
+  min-width: 56px;
 }
 
 /* ---- streamed AI responses ---- */
@@ -411,39 +421,42 @@ body {
   );
 }
 
-/* ---- mobile gate ---- */
+@media (max-width: 640px) {
+  .title {
+    margin-right: 0;
+    text-align: right;
+  }
 
-.mobile {
-  height: 100vh;
-  width: 100vw;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 18px;
-  padding: 24px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-}
+  .command-bar,
+  .output,
+  .input-line {
+    padding-inline: 12px;
+  }
 
-.mobile-prompt {
-  color: var(--prompt);
-  font-size: 16px;
-}
+  .output .ascii {
+    display: none;
+  }
 
-.mobile-msg {
-  white-space: pre-line;
-  line-height: 1.6;
-  color: var(--text);
+  .terminal-input {
+    font-size: 16px;
+  }
+
+  .command-bar button,
+  .theme-choices button,
+  .input-line button {
+    min-height: 38px;
+  }
+
+  .streamed-response {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* scrollbar */
-.terminal-root::-webkit-scrollbar {
+.output::-webkit-scrollbar {
   width: 10px;
 }
-.terminal-root::-webkit-scrollbar-thumb {
+.output::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 5px;
 }
