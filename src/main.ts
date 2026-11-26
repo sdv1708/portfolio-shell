@@ -9,6 +9,7 @@ import { DV_ASCII } from "./ascii.ts";
 import {
   Ctx,
   SHELL_COMMANDS,
+  chatCommands,
   runShellCommand,
   runChatInput,
 } from "./commands.ts";
@@ -40,7 +41,11 @@ function renderMobile(): void {
 let titleThemeEl: HTMLElement;
 let titleBackendEl: HTMLElement;
 
-function buildChrome(): { titleBar: HTMLElement; root: HTMLElement } {
+function buildChrome(): {
+  commandBar: HTMLElement;
+  commands: HTMLFieldSetElement;
+  root: HTMLElement;
+} {
   app.innerHTML = "";
 
   const win = document.createElement("div");
@@ -70,12 +75,17 @@ function buildChrome(): { titleBar: HTMLElement; root: HTMLElement } {
 
   titleBar.append(dots, title);
 
+  const commandBar = document.createElement("nav");
+  commandBar.className = "command-bar";
+  const commands = document.createElement("fieldset");
+  commandBar.append(commands);
+
   const root = document.createElement("div");
   root.className = "terminal-root";
 
-  win.append(titleBar, root);
+  win.append(titleBar, commandBar, root);
   app.append(win);
-  return { titleBar, root };
+  return { commandBar, commands, root };
 }
 
 function setTitleTheme(name: string): void {
@@ -129,9 +139,7 @@ async function boot(term: Terminal, llm: LLM): Promise<void> {
   // Banner + welcome.
   term.printBlock(DV_ASCII, "ascii");
   term.println("");
-  term.println(
-    "welcome. type 'help' for commands, or 'ask' to chat about my work.",
-  );
+  term.println("Choose a command above or type one here.");
   term.println("");
 }
 
@@ -158,11 +166,15 @@ function startTerminal(): void {
   started = true;
   applyTheme(DEFAULT_THEME);
 
-  const { root } = buildChrome();
+  const { commandBar, commands, root } = buildChrome();
   setTitleTheme(DEFAULT_THEME);
 
-  const term = new Terminal({ root });
-  term.setCompletions(SHELL_COMMANDS);
+  const term = new Terminal({
+    root,
+    onBusyChange: (busy) => {
+      commands.disabled = busy;
+    },
+  });
 
   const llm = new LLM();
 
@@ -177,6 +189,32 @@ function startTerminal(): void {
     updateBackendTag: setTitleBackend,
   };
 
+  let renderedCommands = "";
+
+  function updateCommandBar(): void {
+    const inChat = term.mode === "chat";
+    const shortcuts = inChat ? chatCommands(llm) : SHELL_COMMANDS;
+    const key = shortcuts.join(" ");
+    if (key === renderedCommands) return;
+    renderedCommands = key;
+
+    const label = inChat ? "Chat commands" : "Portfolio commands";
+    commandBar.setAttribute("aria-label", label);
+    const buttons = shortcuts.map((shortcut) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = shortcut;
+      if (shortcut === "/exit") button.title = "Return to portfolio commands";
+      button.addEventListener("click", () => void term.submit(shortcut));
+      return button;
+    });
+    commands.replaceChildren(...buttons);
+    term.setCompletions(shortcuts);
+    if (document.activeElement === document.body) term.focus();
+  }
+
+  updateCommandBar();
+
   term.onLine = async (raw: string) => {
     const input = raw;
     if (input.trim() === "") return;
@@ -187,6 +225,7 @@ function startTerminal(): void {
     } else {
       await runChatInput(ctx, input.trim());
     }
+    updateCommandBar();
   };
 
   // Hide the input line until boot finishes, then hand control to the user.

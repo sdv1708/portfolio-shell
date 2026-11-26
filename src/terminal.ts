@@ -8,6 +8,7 @@ export type Mode = "shell" | "chat";
 
 export interface TerminalOptions {
   root: HTMLElement;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 export class Terminal {
@@ -32,7 +33,7 @@ export class Terminal {
   // Set by the command router (main.ts).
   public onLine: (input: string) => void | Promise<void> = () => {};
 
-  constructor(opts: TerminalOptions) {
+  constructor(private readonly opts: TerminalOptions) {
     this.root = opts.root;
     this.root.classList.add("terminal");
 
@@ -53,6 +54,7 @@ export class Terminal {
     this.inputEl = document.createElement("input");
     this.inputEl.className = "hidden-input";
     this.inputEl.type = "text";
+    this.inputEl.setAttribute("aria-label", "Terminal input");
     this.inputEl.autocomplete = "off";
     this.inputEl.spellcheck = false;
     this.inputEl.setAttribute("autocapitalize", "off");
@@ -84,7 +86,12 @@ export class Terminal {
   setBusy(busy: boolean): void {
     this.busy = busy;
     this.inputLineEl.style.visibility = busy ? "hidden" : "visible";
+    this.opts.onBusyChange?.(busy);
     if (!busy) this.focus();
+  }
+
+  async submit(input: string): Promise<void> {
+    if (!this.busy) await this.onLine(input);
   }
 
   focus(): void {
@@ -219,13 +226,12 @@ export class Terminal {
       const value = this.inputEl.value;
       this.inputEl.value = "";
       this.renderInput();
-      await this.onLine(value);
+      await this.submit(value);
       return;
     }
 
-    if (e.key === "Tab") {
+    if (e.key === "Tab" && !e.shiftKey && this.complete()) {
       e.preventDefault();
-      this.complete();
       return;
     }
 
@@ -265,12 +271,12 @@ export class Terminal {
     this.renderInput();
   }
 
-  private complete(): void {
+  private complete(): boolean {
     const value = this.inputEl.value;
     // Only complete the first token (the command name).
-    if (value.includes(" ")) return;
+    if (value.includes(" ")) return false;
     const prefix = value.toLowerCase();
-    if (!prefix) return;
+    if (!prefix) return false;
     const matches = this.completions.filter((c) => c.startsWith(prefix));
     if (matches.length === 1) {
       this.inputEl.value = matches[0];
@@ -287,6 +293,7 @@ export class Terminal {
       this.println(matches.join("    "), "dim");
       this.renderInput();
     }
+    return matches.length > 0;
   }
 
   private moveCaretToEnd(): void {
@@ -333,7 +340,7 @@ function renderAssistantText(container: HTMLElement, text: string): void {
       continue;
     }
 
-    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    const bullet = line.match(/^[-*•·]\s+(.+)$/);
     const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
     const heading = line.match(/^#{1,3}\s+(.+)$/);
 

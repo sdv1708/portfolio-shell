@@ -95,10 +95,55 @@ body {
   color: var(--accent);
 }
 
+.command-bar {
+  flex: 0 0 auto;
+  padding: 8px 18px;
+  background: rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.command-bar fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.command-bar button {
+  min-height: 26px;
+  padding: 2px 7px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.command-bar button:enabled:hover {
+  border-color: var(--command);
+  color: var(--command);
+}
+
+.command-bar button:focus-visible {
+  outline: 2px solid var(--command);
+  outline-offset: 2px;
+}
+
+.command-bar button:disabled {
+  color: var(--dim);
+  cursor: wait;
+}
+
 /* ---- terminal ---- */
 
 .terminal-root {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
@@ -111,7 +156,6 @@ body {
 
 .terminal {
   padding: 16px 18px 44px;
-  min-height: 100%;
 }
 
 .output .line,
@@ -208,6 +252,40 @@ body {
 
 .entry-link:hover {
   text-decoration: underline;
+}
+
+.experience-entry {
+  margin-bottom: 24px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.experience-entry h2 {
+  margin: 0;
+  font-size: 1.07rem;
+}
+
+.experience-title {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.experience-context {
+  margin: 9px 0 0;
+  color: var(--dim);
+}
+
+.experience-achievements {
+  margin: 8px 0 0;
+  padding-left: 1.4em;
+}
+
+.experience-achievements li + li {
+  margin-top: 5px;
+}
+
+.experience-achievements li::marker {
+  color: var(--accent);
 }
 
 /* ---- input line ---- */

@@ -29,7 +29,9 @@ const iqviaSummary = PROFILE.experience
   .filter((role) => role.company.includes("IQVIA"))
   .map(
     (role) =>
-      `${role.title} (${role.dates}): ${role.achievements.join(" ")}`,
+      [`${role.title} (${role.dates}).`, role.context, ...role.achievements]
+        .filter(Boolean)
+        .join(" "),
   )
   .join(" ");
 
@@ -56,6 +58,10 @@ const ENTRIES: Entry[] = [
       : `${PROFILE.preferredName}'s current role is not listed.`,
   },
   {
+    keywords: [["iqvia"]],
+    answer: `At IQVIA, ${PROFILE.preferredName} worked as ${iqviaSummary}`,
+  },
+  {
     keywords: [["experience"], ["years"], ["how long"], ["seniority"]],
     answer: `${PROFILE.preferredName}'s experience includes ${experienceSummary}.`,
   },
@@ -69,10 +75,6 @@ const ENTRIES: Entry[] = [
     answer:
       `A few featured projects:\n\n${projectSummary}\n\n` +
       "For the complete categorized list, run /exit and then projects.",
-  },
-  {
-    keywords: [["iqvia"]],
-    answer: `At IQVIA, ${PROFILE.preferredName} worked as ${iqviaSummary}`,
   },
   {
     keywords: [["contact"], ["email"], ["reach"], ["linkedin"], ["github"], ["hire"]],
@@ -138,6 +140,36 @@ const PROJECT_ALIASES: Partial<Record<string, string[]>> = {
 
 function normalizeProjectQuery(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+const WORK_HISTORY_TOPICS = new Set([
+  "experience",
+  "work experience",
+  "work experiences",
+  "work history",
+  "work background",
+  "employment history",
+  "career history",
+  "professional experience",
+  "professional background",
+  "past roles",
+  "previous roles",
+]);
+
+export function isWorkHistoryQuestion(question: string): boolean {
+  const topic = question
+    .toLowerCase()
+    .trim()
+    .replace(/[.!?]+$/, "")
+    .replace(/^please\s+/, "")
+    .replace(/^(?:can|could|would) you\s+/, "")
+    .replace(/^what (.+) (?:does (?:sanjay|he) have|do you have)$/, "$1")
+    .replace(/^(?:tell me about|show me|list|describe|summarize|outline|what (?:are|is|was|were))\s+/, "")
+    .replace(/^(?:his|your|sanjay['’]s|dv['’]s|the)\s+/, "")
+    .replace(/\s+please$/, "")
+    .replace(/\s+and (?:achievements|accomplishments)$/, "")
+    .trim();
+  return WORK_HISTORY_TOPICS.has(topic);
 }
 
 function projectMatchTerms(name: string, repo: string): string[] {

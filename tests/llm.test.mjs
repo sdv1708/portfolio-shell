@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerFromFaq } from "../src/faq.ts";
+import { answerFromFaq, isWorkHistoryQuestion } from "../src/faq.ts";
 import { LLM } from "../src/llm.ts";
 import { PROFILE } from "../src/profile.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
@@ -69,6 +69,39 @@ test("offline project answers recognize audited projects and show current claims
   for (const [question, expected] of cases) {
     assert.match(answerFromFaq(question), expected, question);
   }
+});
+
+test("general work history questions use the structured view", () => {
+  for (const question of [
+    "experience",
+    "Tell me about your work experience.",
+    "What are his work experiences and achievements?",
+    "Can you summarize Sanjay’s professional background?",
+    "What work experience does Sanjay have?",
+  ]) {
+    assert.equal(isWorkHistoryQuestion(question), true, question);
+  }
+
+  for (const question of [
+    "What is his experience with PostgreSQL?",
+    "Tell me about his work experience at IQVIA.",
+    "Tell me about the Copilot architecture.",
+  ]) {
+    assert.equal(isWorkHistoryQuestion(question), false, question);
+  }
+});
+
+test("work facts distinguish IQVIA platform reach from extraction accuracy", () => {
+  const virtualGold = PROFILE.experience.find((role) => role.company === "Virtual Gold");
+  assert.equal(virtualGold?.dates, "Aug 2026 - Present");
+  assert.match(answerFromFaq("current role"), /Aug 2026 - Present/);
+  assert.match(SYSTEM_PROMPT, /Aug 2026 - Present/);
+
+  const iqvia = PROFILE.experience.find((role) => role.company.startsWith("IQVIA"));
+  assert.match(iqvia?.context ?? "", /350K\+ regulatory documents across 110\+/);
+  assert.match(iqvia?.achievements[0] ?? "", /55% to 95%/);
+  assert.doesNotMatch(iqvia?.achievements[0] ?? "", /350K|110\+/);
+  assert.match(answerFromFaq("work experience at IQVIA"), /350K\+.*110\+.*55% to 95%/);
 });
 
 test("the alternate email reaches the canonical profile and LLM prompt", () => {

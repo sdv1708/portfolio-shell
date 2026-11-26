@@ -5,6 +5,7 @@ import { Terminal } from "./terminal.ts";
 import { LLM, WorkersAIRequestError } from "./llm.ts";
 import { themeNames } from "./themes.ts";
 import { PROFILE, type ProjectStatus } from "./profile.ts";
+import { isWorkHistoryQuestion } from "./faq.ts";
 
 export interface Ctx {
   term: Terminal;
@@ -32,7 +33,11 @@ export const SHELL_COMMANDS = [
   "help",
 ];
 
-export const CHAT_COMMANDS = ["/exit", "/clear", "/model", "/help", "/local"];
+export function chatCommands(llm: LLM): string[] {
+  const commands = ["/exit", "/clear", "/model", "/help"];
+  if (llm.canOfferWebLLM()) commands.push("/local");
+  return commands;
+}
 
 // ---- small rendering helpers --------------------------------------------
 
@@ -241,25 +246,38 @@ function cmdExperience(term: Terminal): void {
   const frag = document.createDocumentFragment();
 
   for (const role of PROFILE.experience) {
-    const entry = document.createElement("div");
-    entry.className = "entry";
+    const entry = document.createElement("section");
+    entry.className = "entry experience-entry";
 
-    const head = document.createElement("div");
-    head.className = "entry-head";
-    head.append(span("entry-title", `${role.company} — ${role.title}`));
+    const company = document.createElement("h2");
+    company.className = "entry-title";
+    company.textContent = role.company;
+
+    const title = document.createElement("div");
+    title.className = "experience-title";
+    title.textContent = role.title;
 
     const meta = document.createElement("div");
     meta.className = "entry-meta";
     meta.append(accentize(`${role.dates} · ${role.location}`));
 
-    entry.append(head, meta);
+    entry.append(company, title, meta);
 
-    for (const achievement of role.achievements) {
-      const line = document.createElement("div");
-      line.className = "entry-bullet";
-      line.append(span("accent", "· "), document.createTextNode(achievement));
-      entry.append(line);
+    if (role.context) {
+      const context = document.createElement("p");
+      context.className = "experience-context";
+      context.textContent = role.context;
+      entry.append(context);
     }
+
+    const achievements = document.createElement("ul");
+    achievements.className = "experience-achievements";
+    for (const achievement of role.achievements) {
+      const item = document.createElement("li");
+      item.textContent = achievement;
+      achievements.append(item);
+    }
+    entry.append(achievements);
     frag.append(entry);
   }
   term.printNode(frag);
@@ -351,12 +369,13 @@ function cmdHistory(term: Terminal): void {
 
 function printChatHelp(ctx: Ctx): void {
   const { term, llm } = ctx;
-  const lines = ["  ask anything about DV's work, projects, or background."];
-  if (llm.canOfferWebLLM()) {
-    lines.push("  commands: /exit · /clear · /model · /local · /help");
+  const commands = chatCommands(llm);
+  const lines = [
+    "  ask anything about DV's work, projects, or background.",
+    `  commands: ${commands.join(" · ")}`,
+  ];
+  if (commands.includes("/local")) {
     lines.push("  /local downloads a private model (~0.9GB) to run fully in your browser.");
-  } else {
-    lines.push("  commands: /exit · /clear · /model · /help");
   }
   for (const line of lines) {
     const el = document.createElement("div");
@@ -391,7 +410,6 @@ export async function enterChat(ctx: Ctx): Promise<void> {
   term.mode = "chat";
   term.setPrompt("dv-chat>");
   term.setPlaceholder("ask something about DV...");
-  term.setCompletions(CHAT_COMMANDS);
 }
 
 function exitChat(ctx: Ctx): void {
@@ -399,7 +417,6 @@ function exitChat(ctx: Ctx): void {
   term.mode = "shell";
   term.setPrompt("$");
   term.setPlaceholder("");
-  term.setCompletions(SHELL_COMMANDS);
 }
 
 // Opt-in download of a fully-local in-browser model.
@@ -471,6 +488,11 @@ export async function runChatInput(ctx: Ctx, input: string): Promise<void> {
   }
   if (word.startsWith("/")) {
     term.println(`unknown command: ${input}. try /help`);
+    return;
+  }
+
+  if (isWorkHistoryQuestion(input)) {
+    cmdExperience(term);
     return;
   }
 

@@ -41,6 +41,7 @@ export interface Role {
   title: string;
   dates: string;
   location: string;
+  context?: string;
   achievements: string[];
 }
 
@@ -67,14 +68,14 @@ export interface Profile {
 }
 
 export const PROFILE: Profile = {
-  updatedAt: "2026-11-25",
+  updatedAt: "2026-11-26",
   fullName: "Sanjay Dari Veerabasappa",
   preferredName: "Sanjay",
   headline: "Backend + AI engineer",
   location: "Chicago, IL",
   summary:
-    "Backend and AI engineer currently building secure multi-agent financial-intelligence " +
-    "systems at Virtual Gold. Experienced in production RAG, LLM evaluation, document " +
+    "Backend and AI engineer building hybrid model routing and financial research " +
+    "workflows at Virtual Gold. Experienced in production RAG, LLM evaluation, document " +
     "intelligence, event-driven services, and data-intensive APIs across AWS, Azure, and " +
     "hybrid on-premises/cloud environments.",
   workAuthorization: "US work authorization through OPT",
@@ -566,15 +567,13 @@ export const PROFILE: Profile = {
     {
       company: "Virtual Gold",
       title: "Software Engineer - AI",
-      dates: "Jun 2026 - Present",
+      dates: "Aug 2026 - Present",
       location: "Remote, USA",
       achievements: [
-        "Architected a secure hybrid on-premises/cloud multi-agent system with intelligent " +
-          "model routing across Llama 3.3 70B through Ollama and vLLM plus cloud LLMs, using " +
-          "MCP-based tool calling for confidential financial workflows.",
-        "Developed a RAG pipeline using Pinecone, FastAPI, Serper, and NetworkX to analyze " +
-          "10-K and 10-Q filings, retrieve real-time market data, and map entity relationships " +
-          "for market and competitive intelligence.",
+        "Prototyped a FastAPI orchestration layer that routes confidential workflows between " +
+          "self-hosted Llama 3.3 70B via Ollama and vLLM and cloud LLMs, with MCP tool calls.",
+        "Built a financial and competitive research workflow combining 10-K and 10-Q filings, " +
+          "live market data, Pinecone retrieval, Serper search, and NetworkX entity relationships.",
       ],
     },
     {
@@ -583,23 +582,24 @@ export const PROFILE: Profile = {
       dates: "Sep 2025 - Dec 2025",
       location: "New York, USA",
       achievements: [
-        "Built and deployed a production LLM recommendation service on AWS ECS using Amazon " +
-          "Bedrock, RAG, Elasticsearch vector retrieval, Redis caching, and multi-signal " +
-          "ranking for scalable personalized recommendations.",
-        "Designed a DeepEval-based LLM evaluation framework measuring hallucination, relevance, " +
-          "groundedness, and latency, then integrated regression thresholds into CI/CD to " +
-          "prevent quality-degrading model and prompt releases.",
+        "Built an AWS recommendation workflow with Amazon Bedrock, Elasticsearch vector retrieval, " +
+          "Redis caching, and multi-signal ranking. It met the sub-two-second target in team testing.",
+        "Established the initial evaluation pipeline with about 30 reference examples, DeepEval " +
+          "checks for relevance, groundedness, hallucination risk, latency, and cost, and CI/CD " +
+          "regression gates.",
       ],
     },
     {
       company: "UMD Community Preservation Trust",
       title: "Software Development Engineer",
       dates: "Feb 2025 - Dec 2025",
-      location: "Maryland, USA",
+      location: "College Park, Maryland, USA",
       achievements: [
-        "Led backend architecture and frontend integration for a multi-tenant rental platform " +
-          "serving 15K+ users, developing 25+ Flask REST APIs and secure React workflows with " +
-          "JWT authentication and RBAC for applicant and administrator access.",
+        "Led backend development and React integration for a rental and administration portal " +
+          "designed for a 15K+ member university community. Built Flask and MySQL services with " +
+          "JWT authentication and role-based access for applicants and administrators.",
+        "Worked with the client on new features and deployment as the portal digitized " +
+          "paper and email workflows.",
       ],
     },
     {
@@ -607,19 +607,21 @@ export const PROFILE: Profile = {
       title: "Software Development Engineer - AI and Backend",
       dates: "Mar 2022 - Jul 2024",
       location: "North Carolina, USA",
+      context:
+        "IQVIA Regulatory Intelligence covers 350K+ regulatory documents across 110+ countries, " +
+        "regions, and international organizations.",
       achievements: [
-        "Built and deployed an Azure-based LLM document-intelligence application using " +
-          "GPT-3.5, Azure Functions, and Blob Storage, improving structured extraction " +
-          "accuracy from 55% to 95% across regulatory documents.",
-        "Developed an Airflow-orchestrated document-processing pipeline using OCR, regex " +
-          "validation, and confidence-based routing, reducing unnecessary Donut inference by " +
-          "30% while improving processing efficiency and reliability.",
-        "Designed event-driven backend services using Azure Service Bus topics, queues, and " +
-          "worker services, processing 3K+ JSON messages per second with retries and " +
-          "dead-letter handling.",
-        "Built FastAPI and SQLAlchemy REST APIs over 100K+ monthly PostgreSQL-compatible " +
-          "payment records, delivering transaction aggregates, outstanding balances, and " +
-          "revenue KPIs to operations teams.",
+        "Improved regulatory Q&A extraction accuracy from approximately 55% to 95% by " +
+          "integrating GPT-3.5 with Azure Functions and Blob Storage.",
+        "Added document eligibility rules, contributed to Elasticsearch search and export, " +
+          "and streamed historical documents to Azure Blob Storage in chunks to bound memory use.",
+        "For the payments platform, added OCR and rules-based routing to an Airflow pipeline. " +
+          "About 30% of tested documents could skip Donut inference.",
+        "Built Azure Service Bus components with retries and dead-letter handling and a webhook " +
+          "that triggered downstream extraction after digitization. Observed throughput reached " +
+          "roughly 3K messages per second.",
+        "Built FastAPI and SQLAlchemy services backed by PostgreSQL for roughly 100K monthly " +
+          "payment records, delivering transaction totals, outstanding balances, and revenue KPIs.",
       ],
     },
   ],
