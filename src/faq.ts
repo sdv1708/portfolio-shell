@@ -108,37 +108,61 @@ const FALLBACK =
 
 const PROJECT_MATCH_STOP_WORDS = new Set([
   "advisor",
+  "data",
   "from",
+  "intelligence",
+  "model",
   "project",
+  "quality",
   "scratch",
   "shell",
   "store",
   "system",
 ]);
 
+const PROJECT_ALIASES: Partial<Record<string, string[]>> = {
+  "ai-model-benchmark": [
+    "benchmarking",
+    "evalscope",
+    "livecodebench",
+    "aa-lcr",
+    "performance studio",
+  ],
+  "intelligence-copilot": ["copilot", "meeting brief"],
+  postmortem: ["postmortem", "post-mortem"],
+  evaltrust: ["evaltrust", "eval-trust", "langsmith", "ragas"],
+  "concurrent-reservation": ["reservation api", "stay inventory", "expired holds"],
+  "distributed-kv-store": ["kv store", "kvctl", "write-ahead log"],
+  "data-structures-algorithms": ["data structures", "dsa", "neetcode"],
+};
+
+function normalizeProjectQuery(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function projectMatchTerms(name: string, repo: string): string[] {
   const repoName = repo.split("/").pop() ?? "";
-  return `${name} ${repoName}`
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(
-      (term) =>
-        (term.length >= 4 || term === "gpt" || term === "kv") &&
-        !PROJECT_MATCH_STOP_WORDS.has(term),
-    );
+  return normalizeProjectQuery(`${name} ${repoName}`).split(" ").filter(
+    (term) =>
+      (term.length >= 4 || term === "gpt" || term === "kv") &&
+      !PROJECT_MATCH_STOP_WORDS.has(term),
+  );
 }
 
 function answerForProject(question: string): string | undefined {
-  const compactQuestion = question.replace(/[^a-z0-9]+/g, "");
-  const project = PROFILE.projects.find((candidate) => {
-    const compactName = candidate.name.toLowerCase().replace(/[^a-z0-9]+/g, "");
-    if (compactName.length >= 4 && compactQuestion.includes(compactName)) {
-      return true;
-    }
-    return projectMatchTerms(candidate.name, candidate.repo).some((term) =>
-      question.includes(term),
+  const normalized = ` ${normalizeProjectQuery(question)} `;
+  const matches = (phrase: string) =>
+    normalized.includes(` ${normalizeProjectQuery(phrase)} `);
+  const project =
+    PROFILE.projects.find((candidate) => {
+      const repoName = candidate.repo.split("/").pop() ?? "";
+      return [candidate.name, repoName, ...(PROJECT_ALIASES[repoName] ?? [])].some(
+        matches,
+      );
+    }) ??
+    PROFILE.projects.find((candidate) =>
+      projectMatchTerms(candidate.name, candidate.repo).some(matches),
     );
-  });
   if (!project) return undefined;
 
   const status =

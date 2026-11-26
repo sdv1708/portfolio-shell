@@ -67,7 +67,7 @@ export interface Profile {
 }
 
 export const PROFILE: Profile = {
-  updatedAt: "2026-07-29",
+  updatedAt: "2026-11-25",
   fullName: "Sanjay Dari Veerabasappa",
   preferredName: "Sanjay",
   headline: "Backend + AI engineer",
@@ -166,10 +166,68 @@ export const PROFILE: Profile = {
   ],
   projects: [
     {
-      name: "PostMortem AI",
+      name: "Performance & Quality Lab",
+      repo: "github.com/sdv1708/ai-model-benchmark",
+      status: "featured",
+      role: "Creator",
+      links: [
+        {
+          label: "live Performance Studio",
+          url: "https://ai-model-quality-challenge-rho.vercel.app/",
+        },
+        {
+          label: "recorded benchmark results",
+          url: "https://github.com/sdv1708/ai-model-benchmark/blob/main/docs/results.md",
+        },
+        {
+          label: "EvalScope pruning extension",
+          url: "https://github.com/sdv1708/evalscope-pruning",
+        },
+      ],
+      technologies: [
+        "Python",
+        "FastAPI",
+        "React",
+        "TypeScript",
+        "EvalScope",
+        "Playwright",
+      ],
+      description:
+        "A model-selection lab with a live app for comparing inference-performance " +
+        "projections and a separate research pipeline for testing cheaper benchmark decisions.",
+      highlights: [
+        "Built Performance Studio to compare Excel projections on matching workload " +
+          "configurations and explain GO, NO GO, or NEEDS DATA decisions across throughput, " +
+          "latency, context, and cost. Analyzed 77 workbooks across 11 anonymous models.",
+        "Replayed a frozen two-stage policy on 28 public LiveCodeBench models. A 63-of-315 " +
+          "question probe with full-set fallback averaged 43.3% of estimated full-run tokens " +
+          "across 61 thresholds.",
+        "In a 1,055-question follow-up at a 0.70 threshold, the 211-question probe made " +
+          "82.7% of decisions on its own. With fallback, the policy used 33.8% of the questions " +
+          "on average and made one wrong decision in 28,000 offline decisions.",
+        "Reconstructed six full benchmark scores from saved grades and built native " +
+          "LiveCodeBench and AA-LCR pruning adapters for EvalScope. The tested fixed subsets " +
+          "failed at least one score-estimation gate, so both adapters default to full retention.",
+        "Regraded 300 saved AA-LCR answers five times to measure judge repeatability and " +
+          "checked how a prompt change shifted verdicts. The published cost figures come " +
+          "from offline replay and use estimated tokens or question counts.",
+      ],
+    },
+    {
+      name: "Postmortem Agent",
       repo: "github.com/sdv1708/postmortem",
       status: "featured",
       role: "Creator",
+      links: [
+        {
+          label: "multi-pass evaluation and baseline",
+          url: "https://github.com/sdv1708/postmortem/pull/52",
+        },
+        {
+          label: "results and engineering retrospective",
+          url: "https://github.com/sdv1708/postmortem/blob/main/docs/LEARNINGS.md",
+        },
+      ],
       technologies: [
         "FastAPI",
         "Next.js",
@@ -179,47 +237,60 @@ export const PROFILE: Profile = {
         "Playwright",
       ],
       description:
-        "An evidence-review system that turns logs, traces, and deployment notes into " +
-        "reviewed incident postmortems without allowing fluent but unsupported claims to " +
-        "pass as facts.",
+        "An incident review application that turns logs, traces, and deployment notes into " +
+        "a cited draft and lets a human finalize the root cause.",
       highlights: [
-        "Runs a visible six-stage analysis pipeline covering evidence normalization, fact " +
-          "extraction, causal analysis, citation verification, drafting, and unsupported-claim review.",
-        "Links every factual claim to immutable source lines or labels it as an assumption; " +
-          "a separate falsifier challenges proposed root causes with counter-evidence.",
-        "Keeps the human responsible for the final root-cause conclusion and preserves " +
-          "superseding conclusions as an audit trail.",
-        "Includes deterministic citation checks, realistic incident scenarios, an evaluation " +
-          "harness, bounded model costs, and end-to-end Playwright coverage.",
+        "Built a six-stage pipeline with immutable, line-addressable evidence, exact quote " +
+          "checks, and separate claim-support verification. Unsupported claims are labeled " +
+          "as assumptions.",
+        "A separate falsifier challenges candidate causes with counterevidence and gaps. " +
+          "A human finalizes the conclusion and can later append a superseding one.",
+        "Compared multi-pass reasoning with a builder-only baseline. On the recorded " +
+          "deploy-ambiguity fixture, multi-pass passed all 13 checks in 10 recorded calls. " +
+          "The five-call baseline missed challenge and counterevidence coverage.",
+        "Reordered the falsifier prompt to reuse an evidence prefix. A live tuning run " +
+          "recorded 2,304 cached falsifier tokens, up from zero in the baseline run.",
       ],
     },
     {
       name: "Executive Intelligence Copilot",
-      repo: "github.com/sdv1708/intelligence_copilot",
+      repo: "github.com/sdv1708/intelligence-copilot",
       status: "featured",
       role: "Creator",
+      links: [
+        {
+          label: "FastAPI and React migration",
+          url: "https://github.com/sdv1708/intelligence-copilot/pull/5",
+        },
+        {
+          label: "pasted-note identity and retry",
+          url: "https://github.com/sdv1708/intelligence-copilot/pull/6",
+        },
+      ],
       technologies: [
         "Python",
-        "LangChain",
+        "FastAPI",
+        "React",
+        "TypeScript",
         "LangGraph",
         "FAISS",
-        "SentenceTransformers",
         "SQLite",
-        "Streamlit",
       ],
       description:
-        "A document-intelligence system that ingests meeting materials and produces " +
-        "source-grounded executive briefs through retrieval, synthesis, and persistent " +
-        "cross-meeting memory.",
+        "A meeting intelligence app that turns uploaded documents and notes into cited " +
+        "executive briefs, open actions, timed agendas, and follow-up Q&A.",
       highlights: [
-        "Processes PDF, DOCX, PPTX, and text inputs into stable, persisted chunks and FAISS " +
-          "vectors with source citations.",
-        "Uses specialized ingestion, recall, synthesis, and memory responsibilities to " +
-          "generate structured briefs and answer questions over meeting evidence.",
-        "Supports multiple LLM providers, versioned SQLite history, exports, and retrieval " +
-          "repair tooling for keeping vector and relational data consistent.",
-        "Actively hardened with typed configuration, forward-only migrations, deterministic " +
-          "test doubles, and more than 200 automated tests.",
+        "Runs topic-specific LangGraph searches in parallel against a per-meeting FAISS " +
+          "index. The brief and Q&A show source citations and traces, including specialist " +
+          "findings and failed inquiries.",
+        "Migrated Streamlit to FastAPI and React with a typed client, versioned SQLite brief " +
+          "history, JSON and Markdown exports, and recurring action items carried forward " +
+          "when meeting titles match.",
+        "Uses stable SQLite chunk IDs as FAISS vector IDs and a per-meeting lock to serialize " +
+          "index writes, deletions, and retrieval backfill.",
+        "Gives each pasted note a separate ID and preserves title and text after failed " +
+          "ingestion so the user can retry. The merged slice recorded 440 passing backend " +
+          "tests and a browser check.",
       ],
     },
     {
@@ -255,6 +326,20 @@ export const PROFILE: Profile = {
       repo: "github.com/sdv1708/concurrent-reservation",
       status: "featured",
       role: "Creator",
+      links: [
+        {
+          label: "merged Stay Inventory refactor",
+          url: "https://github.com/sdv1708/concurrent-reservation/pull/1",
+        },
+        {
+          label: "passing PostgreSQL CI run",
+          url: "https://github.com/sdv1708/concurrent-reservation/actions/runs/44661911551",
+        },
+        {
+          label: "expired-hold handling PR",
+          url: "https://github.com/sdv1708/concurrent-reservation/pull/3",
+        },
+      ],
       technologies: [
         "FastAPI",
         "SQLAlchemy",
@@ -264,17 +349,18 @@ export const PROFILE: Profile = {
         "Pytest",
       ],
       description:
-        "An Airbnb-style reservation backend focused on transaction integrity when multiple " +
-        "users attempt to reserve the same limited inventory.",
+        "A hotel booking API that coordinates nightly inventory holds and Stripe payment " +
+        "confirmation under concurrent requests.",
       highlights: [
-        "Uses database-level pessimistic locking and transactional service methods to prevent " +
-          "double booking under concurrent requests.",
-        "Models reservation, payment-pending, confirmed, and cancelled states explicitly " +
-          "instead of hiding booking transitions inside route handlers.",
-        "Implements JWT authentication, role-based authorization, hotel and inventory " +
-          "management, Stripe payments, and signature-verified asynchronous webhooks.",
-        "Keeps HTTP routing separate from business services and covers state transitions, " +
-          "database behavior, and webhook handling with integration tests.",
+        "Centralized stay availability and count changes in a Stay Inventory module. " +
+          "PostgreSQL locks every occupied night in date order before checking capacity, " +
+          "and the hold and booking commit together.",
+        "Locks the booking row during Stripe confirmation so duplicate deliveries cannot " +
+          "book rooms twice. Added a dry-run, idempotent repair for legacy checkout-night counts.",
+        "Verified the last-room race and concurrent repair against PostgreSQL 16 in a passing " +
+          "workflow on the open CI PR.",
+        "A separate open PR adds expired-hold release and late Stripe payment handling. " +
+          "The merged API includes role-based access, inventory management, and dynamic pricing.",
       ],
     },
     {
@@ -324,13 +410,13 @@ export const PROFILE: Profile = {
         "An open-source auditor for determining whether LLM evaluation results have enough " +
         "statistical evidence to support model-selection and release decisions.",
       highlights: [
-        "Contributed the merged LangSmith run-export adapter, including structural format " +
-          "detection, multi-metric score parsing, skipped-row handling, registry integration, " +
-          "documentation, and tests.",
-        "Contributed the merged Ragas result-export adapter for faithfulness, answer relevancy, " +
-          "context precision, and related RAG evaluation metrics.",
-        "Both contributions let users audit native evaluation exports without first reshaping " +
-          "them into a generic CSV format.",
+        "Merged LangSmith PR #62 imports run exports, uses reference example IDs for pairing, " +
+          "and averages available feedback scores per example.",
+        "Merged Ragas PR #77 imports result exports, recognizes known metrics such as faithfulness " +
+          "and context precision, and averages usable values per row.",
+        "Integrated detection ahead of generic adapters and added tests for routing, format " +
+          "collisions, skipped rows, and empty exports. Users can compare two native exports " +
+          "through the existing CLI.",
       ],
     },
     {
@@ -355,24 +441,35 @@ export const PROFILE: Profile = {
       repo: "github.com/sdv1708/distributed-kv-store",
       status: "in-progress",
       role: "Creator",
+      links: [
+        {
+          label: "write-ahead log and crash recovery PR",
+          url: "https://github.com/sdv1708/distributed-kv-store/pull/14",
+        },
+        {
+          label: "storage and distributed design",
+          url: "https://github.com/sdv1708/distributed-kv-store/issues/1",
+        },
+      ],
       technologies: [
         "Python",
-        "LSM Trees",
         "Write-Ahead Logging",
-        "Consistent Hashing",
-        "Vector Clocks",
+        "CRC32",
+        "Hypothesis",
+        "Pytest",
       ],
       description:
-        "An in-progress distributed-systems project designed to build a durable LSM-tree " +
-        "storage engine first, then add Dynamo-style partitioning, replication, quorums, and " +
-        "conflict detection.",
+        "A working durable single-node key-value engine in Python, built as the foundation " +
+        "for a distributed store.",
       highlights: [
-        "The planned single-node engine covers a write-ahead log, memtable, immutable SSTables, " +
-          "Bloom filters, compaction, and tombstone-based deletion.",
-        "The distributed design covers consistent hashing with virtual nodes, N/W/R quorums, " +
-          "replication, and vector-clock sibling resolution.",
-        "Currently in the design phase with a domain glossary, product brief, and architecture " +
-          "decision records; implementation has not started.",
+        "Implemented a byte-oriented get/put/delete API and kvctl CLI. A single writer appends " +
+          "each mutation to a CRC32-checked WAL before it changes the memtable.",
+        "Replays intact records and truncates a damaged tail on startup. Tested recovery " +
+          "after forcibly killing the CLI in all three fsync modes and checked randomized " +
+          "writes, deletes, and restarts against a dictionary with Hypothesis.",
+        "Documented the next storage milestones (SSTables, Bloom filters, and compaction) " +
+          "and the distributed design for consistent hashing, replication, quorums, and " +
+          "vector-clock conflict resolution.",
       ],
     },
     {
@@ -391,6 +488,23 @@ export const PROFILE: Profile = {
           "behavior.",
         "Attention, transformer blocks, tokenization, training, and autoregressive generation " +
           "remain on the roadmap and are not presented as complete.",
+      ],
+    },
+    {
+      name: "Data Structures & Algorithms",
+      repo: "github.com/sdv1708/data-structures-algorithms",
+      status: "additional",
+      technologies: ["Python", "NeetCode"],
+      description:
+        "A synced archive of 349 Python submissions across 145 algorithm problems. " +
+        "Eighty-two problems have multiple saved submissions.",
+      highlights: [
+        "Practiced graph traversal and dependency analysis, dynamic programming, backtracking, " +
+          "heaps, binary search, and from-scratch hash tables.",
+        "Combined trie prefix pruning with board DFS in Word Search II and used layered " +
+          "leaf removal to find the roots of minimum-height trees.",
+        "Compared memoized search with bottom-up knapsack in Last Stone Weight II and " +
+          "reachable-sum sets with a two-dimensional table in Partition Equal Subset Sum.",
       ],
     },
     {
